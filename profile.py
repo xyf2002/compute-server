@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 kube_description= \
-"""
-Development Cluster with USRP
-"""
+    """
+    Development Cluster with USRP
+    """
 kube_instruction= \
-"""
-Author: Jon Larrea and Ujjwal Pawar
-"""
+    """
+    Author: Jon Larrea and Ujjwal Pawar
+    """
 
 
 import geni.portal as portal
@@ -26,7 +26,7 @@ COMP_MANAGER_ID = "urn:publicid:IDN+emulab.net+authority+cm"
 pc.defineParameter("machineNum", "Number of Machines",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("Hardware", "Machine Hardware",
-                 portal.ParameterType.NODETYPE,"pc")
+                   portal.ParameterType.NODETYPE,"pc")
 pc.defineParameter("OS", "Operating System",
                    portal.ParameterType.STRING,"ubuntu18",[("ubuntu18","ubuntu18"),("ubuntu20","ubuntu20"), ("ubuntu22", "ubuntu22")])
 
@@ -165,14 +165,7 @@ pc.defineParameter(
     advanced=True
 )
 
-# Optional arguments for the kernel build script
-pc.defineParameter(
-    "kernelArgs",
-    "Arguments for build_kernel.sh",
-    portal.ParameterType.STRING,
-    "",
-    advanced=True,
-)
+
 
 
 
@@ -247,6 +240,8 @@ for i in range(0,params.machineNum):
     # node.hardware_type = params.Hardware
     # node.component_manager_id = COMP_MANAGER_ID
     node.addService(PG.Execute(shell="bash", command=profileConfigs + "/local/repository/scripts/configure.sh"))
+
+    node.addService(PG.Execute(shell="bash", command="/local/repository/scripts/install_custom_kernel.sh"))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
     iface.addAddress(PG.IPv4Address("192.168.1."+str((i*2)+1+k8s_ip), netmask))
@@ -262,7 +257,7 @@ for idx, dense_radio in enumerate(params.dense_radios):
     iface = node.addInterface()
     iface.addAddress(PG.IPv4Address("192.168.1."+str(1+k8s_ip+count), netmask))
     network.addInterface(iface)
-    count += 1 
+    count += 1
 
 
 for idx, fixed_radio in enumerate(params.fixed_radios_nuc1):
@@ -293,4 +288,5 @@ for idx, fixed_radio in enumerate(params.fixed_radios_nuc2):
 # Print and go!
 #
 pc.printRequestRSpec(rspec)
- # type: ignore
+# type: ignore
+
