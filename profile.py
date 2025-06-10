@@ -226,10 +226,10 @@ else:
     profileConfigs += "PROFILE_CONF_COMMAND_NOREBOOT='touch' "
     profileConfigs += "PROFILE_CONF_COMMAND_NOREBOOT_ARGS='/local/.noreboot' "
 
-# Kernel build script
-profileConfigs += "PROFILE_CONF_COMMAND_KERNEL='/local/repository/scripts/build_kernel.sh' "
-if params.kernelArgs:
-    profileConfigs += "PROFILE_CONF_COMMAND_KERNEL_ARGS='%s' " % (params.kernelArgs)
+# # Kernel build script
+# profileConfigs += "PROFILE_CONF_COMMAND_KERNEL='/local/repository/scripts/build_kernel.sh' "
+# if params.kernelArgs:
+#     profileConfigs += "PROFILE_CONF_COMMAND_KERNEL_ARGS='%s' " % (params.kernelArgs)
 
 # Machines
 count = 0
