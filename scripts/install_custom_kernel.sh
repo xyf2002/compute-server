@@ -32,6 +32,6 @@ echo "[+] Updating GRUB..."
 sudo update-grub
 
 echo "[+] Requesting safe reboot after profile setup..."
-touch /local/.needreboot
+sudo reboot
 
 echo "[+] Script finished successfully!"
