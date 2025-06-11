@@ -1,5 +1,7 @@
 #!/bin/bash
 set -e
+exec >> /local/install_custom_kernel.log
+exec 2>&1
 
 VERSION="5.15.160+"
 ARCHIVE="chronos-kernel-backup-${VERSION}.tar.gz"
