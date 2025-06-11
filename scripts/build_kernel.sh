@@ -13,6 +13,21 @@ if ! test -t 1; then
     NC=""
 fi
 
+
+GITHUB_TOKEN="$1"
+GITHUB_USERNAME="xyf2002"
+
+if [ -z "$GITHUB_TOKEN" ]; then
+    echo "Error: GitHub token not provided. Usage: ./build_kernel.sh <token>"
+    exit 1
+fi
+
+kernel_repo="ujjwalpawar/chronos-kernel"
+tsc_repo="ujjwalpawar/fake_tsc"
+kernel_link="https://github.com/${kernel_repo}.git"
+tsc_link="https://github.com/${tsc_repo}.git"
+kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
+tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 ################################################################################
 #
 # Utility functions
@@ -27,42 +42,43 @@ function info() {
     printf "${BLUE}$1${NC}\n" "${@:2}"
 }
 
-REPO_URL="https://github.com/ujjwalpawar/chronos-kernel"
-BRANCH="master"
-SRC_DIR="/tmp/linux-src"
-
-info "Checking if kernel and tsc repos are public or need credentials"
-# Check if either of the repos are not publicly accessible, and if so, ask for
-# GitHub credentials to clone them. If the credentials are already provided in
-# git-credentials, use them to clone the repos.
-if ! curl -s -L --head "${kernel_link}" | grep "HTTP/2 200" &> /dev/null ||
-   ! curl -s -L --head "${tsc_link}" | grep "HTTP/2 200" &> /dev/null;
-then
-    # Ask for GitHub credentials unless they already exist in ./git-credentials
-    if ! test -f git-credentials;
-    then
-        info "Will need to clone the following private repositories:"
-        info "  - ${kernel_link}"
-        info "  - ${tsc_link}"
-        echo "Please provide your GitHub username and a personal access token to continue."
-        echo -n "Username: "
-        read -r github_username
-        echo -n "Personal Access Token: "
-        read -r -s github_token
-        echo ""
-        info "Saving credentials to git-credentials"
-        echo "$github_username:$github_token" > git-credentials
-    else
-        info "Reading GitHub credentials from git-credentials"
-        github_username=$(cut -d: -f1 git-credentials)
-        github_token=$(cut -d: -f2 git-credentials)
-    fi
-
-    # Set the clone URLs to use the credentials instead of public link
-    kernel_link="https://${github_username}:${github_token}@github.com/${kernel_repo}.git"
-    tsc_link="https://${github_username}:${github_token}@github.com/${tsc_repo}.git"
-fi
-done
+################################################################################
+#
+# Command-line argument parsing
+#
+################################################################################
+#info "Checking if kernel and tsc repos are public or need credentials"
+## Check if either of the repos are not publicly accessible, and if so, ask for
+## GitHub credentials to clone them. If the credentials are already provided in
+## git-credentials, use them to clone the repos.
+#if ! curl -s -L --head "${kernel_link}" | grep "HTTP/2 200" &> /dev/null ||
+#   ! curl -s -L --head "${tsc_link}" | grep "HTTP/2 200" &> /dev/null;
+#then
+#    # Ask for GitHub credentials unless they already exist in ./git-credentials
+#    if ! test -f git-credentials;
+#    then
+#        info "Will need to clone the following private repositories:"
+#        info "  - ${kernel_link}"
+#        info "  - ${tsc_link}"
+#        echo "Please provide your GitHub username and a personal access token to continue."
+#        echo -n "Username: "
+#        read -r github_username
+#        echo -n "Personal Access Token: "
+#        read -r -s github_token
+#        echo ""
+#        info "Saving credentials to git-credentials"
+#        echo "$github_username:$github_token" > git-credentials
+#    else
+#        info "Reading GitHub credentials from git-credentials"
+#        github_username=$(cut -d: -f1 git-credentials)
+#        github_token=$(cut -d: -f2 git-credentials)
+#    fi
+#
+#    # Set the clone URLs to use the credentials instead of public link
+#    kernel_link="https://${github_username}:${github_token}@github.com/${kernel_repo}.git"
+#    tsc_link="https://${github_username}:${github_token}@github.com/${tsc_repo}.git"
+#fi
+#done
 
 ################################################################################
 #
@@ -77,12 +93,6 @@ git clone ${kernel_link}
 cd chronos-kernel
 # Essentials for building the kernel
 sudo apt-get install -y build-essential git libncurses-dev bison flex libssl-dev libelf-dev dwarves ripgrep
-
-
-# Fetch sources
-rm -rf "$SRC_DIR"
-git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$SRC_DIR"
-cd "$SRC_DIR"
 
 # Configure kernel based on current running config
 info "Copying current kernel config to .config"

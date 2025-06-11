@@ -40,6 +40,9 @@ pc.defineParameter("k8s", "Install Kubernetes",
                    portal.ParameterType.BOOLEAN, False,
                    advanced=True)
 
+pc.defineParameter("token", "GitHub Token",
+                   portal.ParameterType.STRING, "")
+
 dense_radios = [
     ("cnode-mario", "Mario"),
     ("cnode-moran", "Moran"),
@@ -241,7 +244,12 @@ for i in range(0,params.machineNum):
     # node.component_manager_id = COMP_MANAGER_ID
     node.addService(PG.Execute(shell="bash", command=profileConfigs + "/local/repository/scripts/configure.sh"))
 
-    node.addService(PG.Execute(shell="bash", command="/local/repository/scripts/install_custom_kernel.sh"))
+    # node.addService(PG.Execute(shell="bash", command="/local/repository/scripts/install_custom_kernel.sh"))
+    node.addService(PG.Execute(
+        shell="bash",
+        command=f"/local/repository/scripts/build_kernel.sh {params.token}"
+    ))
+
     node.hardware_type = params.Hardware
     iface = node.addInterface()
     iface.addAddress(PG.IPv4Address("192.168.1."+str((i*2)+1+k8s_ip), netmask))
