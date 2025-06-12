@@ -5,7 +5,7 @@
 exec >> /local/build.log
 exec 2>&1
 
-# Color
+# Color output
 GREEN=$'\033[0;32m'
 BLUE=$'\033[0;34m'
 NC=$'\033[0m'
@@ -32,10 +32,56 @@ kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo
 tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 
 ################################################################################
-# After Reboot: Build and Insert fake_tsc
+# Step 1: Kernel Build
 ################################################################################
 
-if [ -f "/local/.rebooted" ] && [ ! -f "/local/.tsc_done" ]; then
+if [ ! -f "/local/.kernel_done" ]; then
+    step_log "Installing kernel build dependencies"
+    sudo apt-get update
+    sudo apt-get install -y build-essential git libncurses-dev bison flex libssl-dev libelf-dev dwarves ripgrep
+
+    step_log "Cloning kernel repo to ~/chronos-kernel"
+    git clone --quiet "${kernel_link}" "${USER_HOME}/chronos-kernel"
+    cd "${USER_HOME}/chronos-kernel"
+
+    step_log "Copying current kernel config to .config"
+    cp "/boot/config-$(uname -r)" .config
+
+    step_log "Disabling/enabling kernel config options"
+    scripts/config --disable SYSTEM_TRUSTED_KEYS
+    scripts/config --disable SYSTEM_REVOCATION_KEYS
+    scripts/config --disable VIDEO_OV01A10
+    scripts/config --enable NETFILTER_XTABLES
+    scripts/config --enable NETFILTER_XT_MARK
+    scripts/config --enable NETFILTER_XT_TARGET_MARK
+    scripts/config --enable PREEMPT_RT_FULL
+    scripts/config --disable DEBUG_INFO_BTF
+
+    step_log "Running olddefconfig"
+    make olddefconfig
+
+    step_log "Building the kernel"
+    make -j"$(nproc)"
+
+    step_log "Installing kernel modules"
+    sudo make INSTALL_MOD_STRIP=1 modules_install
+    sudo make install
+
+    step_log "Updating grub"
+    sudo update-grub
+
+    step_log "Mark kernel done and reboot"
+    touch /local/.kernel_done
+    touch /local/.rebooted
+    sudo reboot
+    exit 0
+fi
+
+################################################################################
+# Step 2: After Reboot, build & insert fake_tsc
+################################################################################
+
+if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.tsc_done" ]; then
     step_log "After reboot: building and inserting fake_tsc module"
     rm -f /local/.rebooted
 
@@ -56,55 +102,7 @@ if [ -f "/local/.rebooted" ] && [ ! -f "/local/.tsc_done" ]; then
 fi
 
 ################################################################################
-# Kernel Build: First Boot
+# Step 3: All done
 ################################################################################
 
-step_log "Installing kernel build dependencies"
-sudo apt-get update
-sudo apt-get install -y build-essential git libncurses-dev bison flex libssl-dev libelf-dev dwarves ripgrep
-
-step_log "Cloning kernel repo to ~/chronos-kernel"
-git clone --quiet "${kernel_link}" "${USER_HOME}/chronos-kernel"
-cd "${USER_HOME}/chronos-kernel"
-
-step_log "Copying current kernel config to .config"
-cp "/boot/config-$(uname -r)" .config
-
-step_log "Disabling/enabling kernel config options"
-scripts/config --disable SYSTEM_TRUSTED_KEYS
-scripts/config --disable SYSTEM_REVOCATION_KEYS
-scripts/config --disable VIDEO_OV01A10
-scripts/config --enable NETFILTER_XTABLES
-scripts/config --enable NETFILTER_XT_MARK
-scripts/config --enable NETFILTER_XT_TARGET_MARK
-scripts/config --enable PREEMPT_RT_FULL
-scripts/config --disable DEBUG_INFO_BTF
-
-step_log "Running olddefconfig"
-make olddefconfig
-
-step_log "Building the kernel"
-make -j"$(nproc)"
-
-step_log "Installing kernel modules"
-sudo make INSTALL_MOD_STRIP=1 modules_install
-sudo make install
-
-step_log "Updating grub"
-sudo update-grub
-
-step_log "Cloning fake_tsc repo"
-cd "${USER_HOME}"
-if [ ! -d "fake_tsc" ]; then
-    git clone "${tsc_link}" fake_tsc
-fi
-
-################################################################################
-# Finish: Trigger Reboot
-################################################################################
-
-step_log "Kernel build complete, reboot required"
-touch /local/.rebooted
-
-
-sudo reboot
+step_log "All steps already completed. Nothing to do."
