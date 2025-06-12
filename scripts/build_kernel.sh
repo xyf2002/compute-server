@@ -107,4 +107,4 @@ step_log "Kernel build complete, reboot required"
 touch /local/.rebooted
 
 
-sudo reboot"
+sudo reboot
