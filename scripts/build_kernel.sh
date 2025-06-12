@@ -35,24 +35,24 @@ tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 # After Reboot: Build and Insert fake_tsc
 ################################################################################
 
-#if [ -f "/local/.rebooted" ]; then
-#    step_log "After reboot: building and inserting fake_tsc module"
-#    rm -f /local/.rebooted
-#
-#    cd "${USER_HOME}"
-#    if [ ! -d "fake_tsc" ]; then
-#        git clone "${tsc_link}" fake_tsc
-#    fi
-#    cd fake_tsc
-#    make
-#    sudo insmod custom_tsc.ko
-#
-#    step_log "fake_tsc module inserted"
-#    lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
-#    dmesg | tail -n 20
-#
-#    exit 0
-#fi
+if [ -f "/local/.rebooted" ]; then
+    step_log "After reboot: building and inserting fake_tsc module"
+    rm -f /local/.rebooted
+
+    cd "${USER_HOME}"
+    if [ ! -d "fake_tsc" ]; then
+        git clone "${tsc_link}" fake_tsc
+    fi
+    cd fake_tsc
+    make
+    sudo insmod custom_tsc.ko
+
+    step_log "fake_tsc module inserted"
+    lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
+    dmesg | tail -n 20
+
+    exit 0
+fi
 
 ################################################################################
 # Kernel Build: First Boot
