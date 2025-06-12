@@ -35,7 +35,7 @@ tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 # After Reboot: Build and Insert fake_tsc
 ################################################################################
 
-if [ -f "/local/.rebooted" ]; then
+if [ -f "/local/.rebooted" ] && [ ! -f "/local/.tsc_done" ]; then
     step_log "After reboot: building and inserting fake_tsc module"
     rm -f /local/.rebooted
 
@@ -51,6 +51,7 @@ if [ -f "/local/.rebooted" ]; then
     lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
     dmesg | tail -n 20
 
+    touch /local/.tsc_done
     exit 0
 fi
 
@@ -104,4 +105,8 @@ fi
 
 step_log "Kernel build complete, reboot required"
 touch /local/.rebooted
-sudo reboot
+
+if [ ! -f "/local/.noreboot" ]; then
+    step_log "Rebooting to apply new kernel"
+    sudo reboot
+fi
