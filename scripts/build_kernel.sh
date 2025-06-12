@@ -104,8 +104,4 @@ fi
 
 step_log "Kernel build complete, reboot required"
 touch /local/.rebooted
-
-if [ ! -f "/local/.noreboot" ]; then
-    step_log "Rebooting to apply new kernel"
-    sudo reboot
-fi
+sudo reboot
