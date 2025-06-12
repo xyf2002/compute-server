@@ -132,5 +132,13 @@ sudo update-grub
 # Leave sources in place for inspection
 
 echo "Kernel build complete"
-sudo reboot
+date
+touch /local/.rebooted
+
+if [ ! -f "/local/.noreboot" ]; then
+    echo "Rebooting..."
+    echo ""
+    # Reboot to apply changes
+    sudo reboot
+fi
 
