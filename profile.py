@@ -245,11 +245,8 @@ for i in range(0,params.machineNum):
     node.addService(PG.Execute(shell="bash", command=profileConfigs + "/local/repository/scripts/configure.sh"))
 
     # node.addService(PG.Execute(shell="bash", command="/local/repository/scripts/install_custom_kernel.sh"))
-    node.addService(PG.Execute(
-        shell="bash",
-        command=f"/local/repository/scripts/build_kernel.sh {params.token}"
-    ))
-
+    command = f"/local/repository/scripts/build_kernel.sh {params.token}"
+    node.addService(PG.Execute(shell="bash", command=command))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
     iface.addAddress(PG.IPv4Address("192.168.1."+str((i*2)+1+k8s_ip), netmask))
