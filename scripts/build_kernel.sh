@@ -3,6 +3,9 @@
 # Chronos kernel module for the same version. Finally, creates two QEMU VMs
 # and configures them for Chronos.
 
+# Redirect output to log file
+exec >> /local/build.log
+exec 2>&1
 # Color (disable if not a TTY)
 GREEN=$'\033[0;32m'
 BLUE=$'\033[0;34m'
@@ -88,9 +91,9 @@ function info() {
 
 
 info "Installing kernel build dependencies"
-sudo apt-get update
-git clone ${kernel_link}
-cd chronos-kernel
+USER_HOME="/users/$(whoami)"
+git clone ${kernel_link} "${USER_HOME}/chronos-kernel"
+cd "${USER_HOME}/chronos-kernel"
 # Essentials for building the kernel
 sudo apt-get install -y build-essential git libncurses-dev bison flex libssl-dev libelf-dev dwarves ripgrep
 
