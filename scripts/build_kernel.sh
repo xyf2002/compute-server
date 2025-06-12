@@ -41,6 +41,17 @@ tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 # Kernel Build
 ################################################################################
 
+if [ -f "/local/.rebooted" ]; then
+    # Configurations that are required after rebooting
+    echo "Executing after-reboot configurations"
+
+    echo "Done!"
+    date
+    touch /local/.rebooted
+    echo "Rebooting..."
+    exit 0
+fi
+
 step_log "Installing kernel build dependencies"
 sudo apt-get update
 sudo apt-get install -y build-essential git libncurses-dev bison flex libssl-dev libelf-dev dwarves ripgrep
