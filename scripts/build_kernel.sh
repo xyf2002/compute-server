@@ -121,7 +121,6 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
     dmesg | tail -n 20
 
     touch /local/.tsc_done
-    exit 0
 fi
 
 ################################################################################
@@ -131,12 +130,55 @@ fi
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "Installing virtualization tools and setting up VM"
     # Tool for simplifying the creation of Ubuntu VMs
+
     sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virtinst uvtool
     # Pull image tags
+    step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/minimal/daily/ release=bionic arch=amd64
 
     step_log "Creating KVM VM named 'vm'"
     sudo uvt-kvm create vm release=bionic arch=amd64 --cpu 4 --memory 4096 --password 1997
+
+    step_log "Modifying /etc/libvirt/qemu/vm.xml to patch CPU and clock settings"
+        VM_XML="/etc/libvirt/qemu/vm.xml"
+        TMP_XML="/tmp/vm.xml.modified"
+
+        sudo cp "$VM_XML" "$VM_XML.bak"
+
+        step_log "Deleting two lines after </features>"
+        sudo awk '
+        /<\/features>/ {
+            print;
+            skip = 2;
+            next;
+        }
+        skip > 0 {
+            skip--;
+            next;
+        }
+        { print }
+        ' "$VM_XML" > "$TMP_XML"
+
+        step_log "Inserting new <cpu> and <clock> blocks"
+        sudo sed -i "/<\/features>/a \
+    <cpu mode='host-passthrough' check='none'>\\
+      <feature policy='disable' name='rdtscp'/>\\
+      <feature policy='disable' name='tsc-deadline'/>\\
+    </cpu>\\
+    <clock offset='localtime'>\\
+      <timer name='rtc' present='no' tickpolicy='delay'/>\\
+      <timer name='pit' present='no' tickpolicy='discard'/>\\
+      <timer name='hpet' present='no'/>\\
+      <timer name='kvmclock' present='yes'/>\\
+    </clock>" "$TMP_XML"
+
+        step_log "Replacing vm.xml with modified version and redefining domain"
+        sudo mv "$TMP_XML" "$VM_XML"
+        sudo virsh define "$VM_XML"
+
+        sudo virsh destroy vm
+        sudo virsh start vm
+
 
     touch /local/.vm_setup_done
     exit 0
