@@ -90,8 +90,31 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
         git clone "${tsc_link}" fake_tsc
     fi
     cd fake_tsc
+
+    if [ -f init.c ]; then
+            step_log "Compiling and running init.c"
+            gcc init.c -o init
+            sudo ./init
+    fi
+
+    if [ -f shared.c ]; then
+        step_log "Compiling shared.c"
+        gcc shared.c -o shared
+    fi
+
+    step_log "Building fake_tsc module"
     make
+
+    step_log "Unloading existing KVM modules (if any)"
+        sudo rmmod kvm_intel || true
+        sudo rmmod kvm || true
+
+    step_log "Inserting custom_tsc.ko"
     sudo insmod custom_tsc.ko
+    sudo modprobe kvm
+    sudo modprobe kvm_intel
+
+    step_log "Re-loading KVM modules"
 
     step_log "fake_tsc module inserted"
     lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
@@ -102,7 +125,25 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
 fi
 
 ################################################################################
-# Step 3: All done
+# Step 3: VM Setup
+################################################################################
+
+if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
+    step_log "Installing virtualization tools and setting up VM"
+    # Tool for simplifying the creation of Ubuntu VMs
+    sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virtinst uvtool
+    # Pull image tags
+    sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/minimal/daily/ release=bionic arch=amd64
+
+    step_log "Creating KVM VM named 'vm'"
+    sudo uvt-kvm create vm release=bionic arch=amd64 --cpu 4 --memory 4096 --password 1997
+
+    touch /local/.vm_setup_done
+    exit 0
+fi
+
+################################################################################
+# Step 4: All done
 ################################################################################
 
 step_log "All steps already completed. Nothing to do."
