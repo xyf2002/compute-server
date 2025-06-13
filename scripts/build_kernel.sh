@@ -23,6 +23,8 @@ function step_log() {
 }
 
 GITHUB_TOKEN="$1"
+MACHINE_NUM="$2"
+INSTANCE_ID="$3"
 GITHUB_USERNAME="xyf2002"
 USER_HOME="/users/$(whoami)"
 

@@ -245,7 +245,8 @@ for i in range(0,params.machineNum):
     node.addService(PG.Execute(shell="bash", command=profileConfigs + "/local/repository/scripts/configure.sh"))
 
     # node.addService(PG.Execute(shell="bash", command="/local/repository/scripts/install_custom_kernel.sh"))
-    command="/local/repository/scripts/build_kernel.sh {}".format(params.token)
+    # command="/local/repository/scripts/build_kernel.sh {}".format(params.token)
+    command="/local/repository/scripts/build_kernel.sh {} {} {}".format(params.token, params.machineNum, i)
     node.addService(PG.Execute(shell="bash", command=command))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
