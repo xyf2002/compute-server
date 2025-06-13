@@ -138,12 +138,15 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/minimal/daily/ release=bionic arch=amd64
 
-    step_log "Creating KVM VM named 'vm'"
-    sudo uvt-kvm create vm release=bionic arch=amd64 --cpu 4 --memory 4096 --password 1997
+    VM_NAME="ins${INSTANCE_ID}vm"
+    STATIC_IP="192.168.1.$((INSTANCE_ID + 1))"
 
-    step_log "Modifying /etc/libvirt/qemu/vm.xml to patch CPU and clock settings"
-        VM_XML="/etc/libvirt/qemu/vm.xml"
-        TMP_XML="/tmp/vm.xml.modified"
+    step_log "Creating KVM VM named '$VM_NAME'"
+    sudo uvt-kvm create "$VM_NAME" release=bionic arch=amd64 --cpu 4 --memory 4096 --password 1997
+
+    step_log "Modifying /etc/libvirt/qemu/$VM_NAME.xml to patch CPU and clock settings"
+        VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
+        TMP_XML="/tmp/${VM_NAME}.xml.modified"
 
         sudo cp "$VM_XML" "$VM_XML.bak"
 
@@ -174,12 +177,42 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
       <timer name='kvmclock' present='yes'/>\\
     </clock>" "$TMP_XML"
 
-        step_log "Replacing vm.xml with modified version and redefining domain"
+        step_log "Replacing $VM_NAME.xml with modified version and redefining domain"
         sudo mv "$TMP_XML" "$VM_XML"
         sudo virsh define "$VM_XML"
 
-        sudo virsh destroy vm
-        sudo virsh start vm
+        sudo virsh destroy "$VM_NAME"
+        sudo virsh start "$VM_NAME"
+
+        step_log "Assigning fixed alias IP 192.168.1.$((INSTANCE_ID + 1)) for VM"
+
+        step_log "Enabling IP forwarding"
+        echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
+
+        step_log "Waiting for VM $VM_NAME to obtain IP address..."
+        VM_IP=""
+        for attempt in {1..10}; do
+            VM_IP=$(sudo uvt-kvm ip "$VM_NAME")
+            if [ -n "$VM_IP" ]; then
+                break
+            fi
+            sleep 2
+        done
+
+        if [ -z "$VM_IP" ]; then
+            echo "❌ Could not determine IP address for VM $VM_NAME"
+        else
+            step_log "VM $VM_NAME has IP $VM_IP"
+            step_log "Mapping $STATIC_IP to $VM_IP via iptables"
+
+            # Optional: Add host alias IP to virbr0 for local access
+            sudo ip addr add "$STATIC_IP/24" dev virbr0 || true
+
+            # NAT rules
+            sudo iptables -t nat -A PREROUTING -d "$STATIC_IP" -j DNAT --to-destination "$VM_IP"
+            sudo iptables -t nat -A POSTROUTING -s "$VM_IP" -j MASQUERADE
+        fi
+
 
 
     touch /local/.vm_setup_done
