@@ -134,6 +134,7 @@ fi
 ################################################################################
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "Installing virtualization tools and setting up VM"
+
     # -------------------------------------------------------------------------
     # 1. Install KVM / libvirt / uvtool
     # -------------------------------------------------------------------------
@@ -179,8 +180,8 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
       <feature policy='disable' name='tsc-deadline'/>\\
     </cpu>\\
     <clock offset='localtime'>\\
-      <timer name='rtc' present='no' tickpolicy='delay'/>\\
-      <timer name='pit' present='no' tickpolicy='discard'/>\\
+      <timer name='rtc'  present='no' tickpolicy='delay'/>\\
+      <timer name='pit'  present='no' tickpolicy='discard'/>\\
       <timer name='hpet' present='no'/>\\
       <timer name='kvmclock' present='yes'/>\\
     </clock>" "$TMP_XML"
@@ -196,19 +197,20 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # -------------------------------------------------------------------------
     step_log "Enabling IP forwarding + flushing iptables"
     sudo iptables -F
+    sudo iptables -t nat -F
     echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
 
-    # (Optional) Allow generic TCP/UDP/SCTP traffic
-    sudo iptables -A INPUT  -p udp  -j ACCEPT
-    sudo iptables -A FORWARD -p tcp -j ACCEPT
-    sudo iptables -A OUTPUT -p tcp -j ACCEPT
-    sudo iptables -A OUTPUT -p udp -j ACCEPT
-    sudo iptables -A INPUT  -p sctp -j ACCEPT
+    # Basic accept rules (UDP/TCP/SCTP) — optional
+    sudo iptables -A INPUT   -p udp  -j ACCEPT
+    sudo iptables -A OUTPUT  -p udp  -j ACCEPT
+    sudo iptables -A FORWARD -p tcp  -j ACCEPT
+    sudo iptables -A OUTPUT  -p tcp  -j ACCEPT
+    sudo iptables -A INPUT   -p sctp -j ACCEPT
+    sudo iptables -A OUTPUT  -p sctp -j ACCEPT
     sudo iptables -A FORWARD -p sctp -j ACCEPT
-    sudo iptables -A OUTPUT -p sctp -j ACCEPT
 
     # -------------------------------------------------------------------------
-    # 6. Wait VM to obtain an IP from virbr0 DHCP
+    # 6. Wait for VM to obtain a DHCP address on virbr0
     # -------------------------------------------------------------------------
     step_log "Waiting for VM '$VM_NAME' to obtain IP address..."
     VM_IP=""
@@ -225,9 +227,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "VM '$VM_NAME' has IP $VM_IP"
 
     # -------------------------------------------------------------------------
-    # 7. Parse ip.conf and create DNAT / SNAT rules
-    # -------------------------------------------------------------------------
-    # ip.conf path:   <repo-root>/config/ip.conf
+    # 7. Parse ip.conf (one mapping per node is fine) and set DNAT/SNAT
     # -------------------------------------------------------------------------
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ip_conf="${SCRIPT_DIR}/../config/ip.conf"
@@ -235,30 +235,24 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     step_log "Applying iptables rules based on ${ip_conf}"
     while read -r line || [[ -n "$line" ]]; do
-        # Skip blank lines and comments
+        # skip blank lines / comments
         [[ -z "$line" || "$line" =~ ^# ]] && continue
 
         node=$(echo "$line" | cut -d':' -f1)
-        ip_mapping=$(echo "$line" | sed -E "s/^[^:]+://g" | tr -d '{}\" ')
+        [[ "$node" != "$current_hostname" ]] && continue  # only process our own line
 
-        # Iterate over each key:value pair
-        echo "$ip_mapping" | tr ',' '\n' | while read -r pair; do
+        # strip node: and braces, quotes, spaces
+        ip_pair=$(echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ')
+        # expect exactly one pair, but loop for safety
+        echo "$ip_pair" | tr ',' '\n' | while read -r pair; do
             [[ -z "$pair" || ! "$pair" =~ ":" ]] && continue
-            first_ip=$(echo "$pair" | cut -d':' -f1)   # exposed IP (11.0.0.x)
-            second_ip=$(echo "$pair" | cut -d':' -f2)  # internal IP (192.168.122.x)
+            exposed_ip=$(echo "$pair" | cut -d':' -f1)   # e.g. 192.168.1.1
+            internal_ip=$(echo "$pair" | cut -d':' -f2)  # e.g. 192.168.122.5
 
-            if [[ "$node" == "$current_hostname" ]]; then
-                # Current host owns the VM -> forward traffic to its VM
-                echo "[${current_hostname}] DNAT ${first_ip} -> ${second_ip}"
-                sudo ip addr add "${first_ip}/24" dev virbr0 || true
-                sudo iptables -t nat -A PREROUTING  -d "${first_ip}" -j DNAT --to-destination "${second_ip}"
-                sudo iptables -t nat -A POSTROUTING -s "${second_ip}" -j MASQUERADE
-            else
-                # Remote host: add reverse rule so peer can reach our first_ip
-                echo "[${current_hostname}] reverse DNAT ${second_ip} -> ${first_ip} (for ${node})"
-                sudo iptables -t nat -A PREROUTING  -d "${second_ip}" -j DNAT --to-destination "${first_ip}"
-                sudo iptables -t nat -A POSTROUTING -s "${first_ip}"  -j MASQUERADE
-            fi
+            step_log "Adding DNAT $exposed_ip -> $internal_ip"
+            sudo ip addr add "${exposed_ip}/24" dev virbr0 || true
+            sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}" -j DNAT --to-destination "${internal_ip}"
+            sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
         done
     done < "${ip_conf}"
 
