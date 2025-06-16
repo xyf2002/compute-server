@@ -126,109 +126,134 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
 fi
 
 ################################################################################
-# Step 3: VM setup & dynamic IP mapping via ip.conf
+# Step 3: VM setup  +  static virbr0 IP via cloud-init
 ################################################################################
-# Preconditions:
-#   - /local/.tsc_done exists
-#   - /local/.vm_setup_done NOT exists
+# Preconditions
+#   – /local/.tsc_done exists
+#   – /local/.vm_setup_done NOT exists
 ################################################################################
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
-    step_log "Installing virtualization tools and setting up VM"
+    step_log "Installing virtualization tools and creating fixed-IP VM"
 
-    # 1. Install KVM / libvirt / uvtool
+    # 1. Packages
     sudo apt-get update
     sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients \
                             bridge-utils virtinst uvtool
 
-    # 2. Download Ubuntu cloud image
+    # 2. Grab latest minimal cloud image (once per host)
     step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync \
          --source https://cloud-images.ubuntu.com/minimal/daily/ \
          release=bionic arch=amd64
 
-    # 3. Create VM
+    # 3. Derive names + fixed addresses from INSTANCE_ID
     VM_NAME="ins${INSTANCE_ID}vm"
-    step_log "Creating KVM VM named '$VM_NAME'"
-    sudo uvt-kvm create "$VM_NAME" \
-         release=bionic arch=amd64 \
-         --cpu 4 --memory 4096 --password 1997
+    INTERNAL_IP="192.168.122.$((4 + INSTANCE_ID))"      # 4,5,6 …
+    EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # 1,2,3 …
 
-    # 4. Patch CPU / clock model
+    step_log "VM  = ${VM_NAME}"
+    step_log "Int = ${INTERNAL_IP}   /   Ext = ${EXPOSED_IP}"
+
+    # 4. Build a tiny cloud-init seed (meta & user data)
+    SEED_DIR="$(mktemp -d)"
+    cat >"${SEED_DIR}/meta-data" <<EOF
+instance-id: ${VM_NAME}
+local-hostname: ${VM_NAME}
+EOF
+
+    cat >"${SEED_DIR}/user-data" <<EOF
+#cloud-config
+network:
+  version: 2
+  ethernets:
+    ens3:
+      dhcp4: false
+      addresses: [${INTERNAL_IP}/24]
+      gateway4: 192.168.122.1
+      nameservers: {addresses: [8.8.8.8,1.1.1.1]}
+EOF
+
+    # 5. Create VM with the seed
+    step_log "Creating KVM VM '${VM_NAME}' with static IP ${INTERNAL_IP}"
+    sudo uvt-kvm create "${VM_NAME}" \
+        release=bionic arch=amd64 \
+        --cpu 4 --memory 4096 --password 1997 \
+        --cloud-init meta-data="${SEED_DIR}/meta-data",user-data="${SEED_DIR}/user-data"
+
+    # 6. Optional: patch CPU / clock model (kept from your original script)
     VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
     TMP_XML="/tmp/${VM_NAME}.xml.modified"
     sudo cp "$VM_XML" "$VM_XML.bak"
-
-    step_log "Deleting two lines after </features>"
-    sudo awk '
-        /<\/features>/ { print; skip=2; next }
-        skip>0 { skip--; next }
-        { print }
-    ' "$VM_XML" > "$TMP_XML"
-
-    step_log "Inserting new <cpu> and <clock> blocks"
+    sudo awk '/<\/features>/ {print;skip=2;next} skip>0 {skip--;next} {print}' "$VM_XML" >"$TMP_XML"
     sudo sed -i "/<\/features>/a \
-    <cpu mode='host-passthrough' check='none'>\\
-      <feature policy='disable' name='rdtscp'/>\\
-      <feature policy='disable' name='tsc-deadline'/>\\
-    </cpu>\\
-    <clock offset='localtime'>\\
-      <timer name='rtc' present='no' tickpolicy='delay'/>\\
-      <timer name='pit' present='no' tickpolicy='discard'/>\\
-      <timer name='hpet' present='no'/>\\
-      <timer name='kvmclock' present='yes'/>\\
-    </clock>" "$TMP_XML"
-
-    step_log "Redefining domain with patched XML"
+      <cpu mode='host-passthrough' check='none'><feature policy='disable' name='rdtscp'/><feature policy='disable' name='tsc-deadline'/></cpu>\
+      <clock offset='localtime'><timer name='rtc' present='no' tickpolicy='delay'/><timer name='pit' present='no' tickpolicy='discard'/><timer name='hpet' present='no'/><timer name='kvmclock' present='yes'/></clock>" "$TMP_XML"
     sudo mv "$TMP_XML" "$VM_XML"
     sudo virsh define "$VM_XML"
     sudo virsh destroy "$VM_NAME" || true
-    sudo virsh start "$VM_NAME"
+    sudo virsh start   "$VM_NAME"
 
-    # 5. Enable IP forwarding & flush old rules
-    step_log "Enabling IP forwarding + flushing iptables"
+    # remove temp seed directory
+    rm -rf "${SEED_DIR}"
+
+    # 7. Mark done; the alias/NAT step runs separately
+    touch /local/.vm_setup_done
+fi
+################################################################################
+# Step 4: Exposed-IP alias  &  NAT rules (runs once per host)
+################################################################################
+# Preconditions
+#   – /local/.vm_setup_done   exists  (VM created)
+#   – /local/.net_setup_done  NOT     exists (NAT not yet written)
+################################################################################
+if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
+    step_log "Setting alias IP and NAT rules for this host"
+
+    # 1. Flush old tables and turn on forwarding
     sudo iptables -F
     sudo iptables -t nat -F
     echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
 
-    # 6. Wait until VM gets a virbr0 address
-    step_log "Waiting for VM '$VM_NAME' to obtain IP address..."
-    for i in {1..10}; do
-        VM_IP=$(sudo uvt-kvm ip "$VM_NAME") && break
-        sleep 2
-    done
-    [ -z "$VM_IP" ] && { echo "❌ Could not determine VM IP"; exit 1; }
-    step_log "VM '$VM_NAME' has IP $VM_IP"
+    # 2. Find the primary outbound NIC (first 'dev' after default route)
+    EXPOSE_IFACE=$(ip route get 1 | awk '{for(i=1;i<=NF;i++) if ($i=="dev"){print $(i+1);exit}}')
+    step_log "Outbound interface detected: ${EXPOSE_IFACE}"
 
-    # 7. Choose physical interface to host exposed-IP aliases
-    EXPOSE_IFACE=$(ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')
-    step_log "Using interface '${EXPOSE_IFACE}' for exposed-IP aliases"
-
-    # 8. Read ip.conf and add DNAT/SNAT (only lines for this host)
+    # 3. Parse ip.conf line that matches this host
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ip_conf="${SCRIPT_DIR}/../config/ip.conf"
-    current_hostname=$(hostname)
+    host=$(hostname)
 
-    step_log "Applying iptables rules from ${ip_conf}"
-    grep "^${current_hostname}:" "$ip_conf" | while read -r line; do
-        ip_pair=$(echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ')
-        echo "$ip_pair" | tr ',' '\n' | while read -r pair; do
-            [ -z "$pair" ] && continue
-            exposed_ip=${pair%%:*}
-            internal_ip=${pair##*:}
+    line=$(grep "^${host}:" "${ip_conf}" || true)
+    if [ -z "$line" ]; then
+        step_log "❌ No entry for '${host}' in ${ip_conf}; skipping NAT setup"
+        touch /local/.net_setup_done
+        exit 0
+    fi
 
-            step_log "Mapping ${exposed_ip} -> ${internal_ip}"
-            sudo ip addr add "${exposed_ip}/24" dev "${EXPOSE_IFACE}" || true
-            sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}" -j DNAT --to-destination "${internal_ip}"
-            sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
-        done
+    # 4. Iterate each exposed:internal pair for this host
+    echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ' | tr ',' '\n' | while read -r pair; do
+        [ -z "$pair" ] && continue
+        exposed_ip=${pair%%:*}
+        internal_ip=${pair##*:}
+
+        step_log "Alias ${exposed_ip}  →  DNAT to ${internal_ip}"
+        sudo ip addr add "${exposed_ip}/24" dev "${EXPOSE_IFACE}" label "${EXPOSE_IFACE}:exposed" || true
+        sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}"  -j DNAT --to-destination "${internal_ip}"
+        sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
     done
 
-    step_log "Dynamic IP mapping completed"
-    touch /local/.vm_setup_done
-    exit 0
+    # 5. Show final NAT table for verification
+    step_log "PREROUTING:"
+    sudo iptables -t nat -L PREROUTING  -n
+    step_log "POSTROUTING:"
+    sudo iptables -t nat -L POSTROUTING -n
+
+    touch /local/.net_setup_done
 fi
 
+
+
 ################################################################################
-# Step 4: All done
+# Step 5: All done
 ################################################################################
 step_log "All steps already completed. Nothing to do."
