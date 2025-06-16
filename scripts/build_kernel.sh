@@ -129,8 +129,8 @@ fi
 # Step 3: VM setup & dynamic IP mapping via ip.conf
 ################################################################################
 # Preconditions:
-#   - /local/.tsc_done exists  : fake_tsc already inserted
-#   - /local/.vm_setup_done NOT exists : VM not provisioned yet
+#   - /local/.tsc_done exists
+#   - /local/.vm_setup_done NOT exists
 ################################################################################
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "Installing virtualization tools and setting up VM"
@@ -143,7 +143,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
                             bridge-utils virtinst uvtool
 
     # -------------------------------------------------------------------------
-    # 2. Download Ubuntu Cloud image (bionic-minimal, AMD64)
+    # 2. Download Ubuntu Cloud image
     # -------------------------------------------------------------------------
     step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync \
@@ -200,17 +200,14 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo iptables -t nat -F
     echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
 
-    # Basic accept rules (UDP/TCP/SCTP) — optional
+    # Basic open rules (optional)
     sudo iptables -A INPUT   -p udp  -j ACCEPT
     sudo iptables -A OUTPUT  -p udp  -j ACCEPT
     sudo iptables -A FORWARD -p tcp  -j ACCEPT
     sudo iptables -A OUTPUT  -p tcp  -j ACCEPT
-    sudo iptables -A INPUT   -p sctp -j ACCEPT
-    sudo iptables -A OUTPUT  -p sctp -j ACCEPT
-    sudo iptables -A FORWARD -p sctp -j ACCEPT
 
     # -------------------------------------------------------------------------
-    # 6. Wait for VM to obtain a DHCP address on virbr0
+    # 6. Wait for VM to obtain a virbr0 DHCP address
     # -------------------------------------------------------------------------
     step_log "Waiting for VM '$VM_NAME' to obtain IP address..."
     VM_IP=""
@@ -219,51 +216,51 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
         [[ -n "$VM_IP" ]] && break
         sleep 2
     done
-
-    if [[ -z "$VM_IP" ]]; then
-        echo "❌ Could not determine IP address for VM $VM_NAME"
-        exit 1
-    fi
+    [[ -z "$VM_IP" ]] && { echo "❌ Could not determine VM IP"; exit 1; }
     step_log "VM '$VM_NAME' has IP $VM_IP"
 
     # -------------------------------------------------------------------------
-    # 7. Parse ip.conf (one mapping per node is fine) and set DNAT/SNAT
+    # 7. Determine host physical interface to hold exposed IP aliases
+    # -------------------------------------------------------------------------
+    # AUTO-DETECT default-route interface; override manually if needed
+    EXPOSED_IFACE=$(ip -o -4 route get 1 | awk '{print $5; exit}')
+    step_log "Using interface '$EXPOSED_IFACE' for exposed IP aliases"
+
+    # -------------------------------------------------------------------------
+    # 8. Parse ip.conf and add DNAT/SNAT rules (current node only)
     # -------------------------------------------------------------------------
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ip_conf="${SCRIPT_DIR}/../config/ip.conf"
     current_hostname=$(hostname)
 
     step_log "Applying iptables rules based on ${ip_conf}"
-    while read -r line || [[ -n "$line" ]]; do
-        # skip blank lines / comments
-        [[ -z "$line" || "$line" =~ ^# ]] && continue
-
-        node=$(echo "$line" | cut -d':' -f1)
-        [[ "$node" != "$current_hostname" ]] && continue  # only process our own line
-
-        # strip node: and braces, quotes, spaces
+    grep "^${current_hostname}:" "$ip_conf" | while read -r line; do
         ip_pair=$(echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ')
-        # expect exactly one pair, but loop for safety
         echo "$ip_pair" | tr ',' '\n' | while read -r pair; do
             [[ -z "$pair" || ! "$pair" =~ ":" ]] && continue
             exposed_ip=$(echo "$pair" | cut -d':' -f1)   # e.g. 192.168.1.1
             internal_ip=$(echo "$pair" | cut -d':' -f2)  # e.g. 192.168.122.5
 
-            step_log "Adding DNAT $exposed_ip -> $internal_ip"
-            sudo ip addr add "${exposed_ip}/24" dev virbr0 || true
+            step_log "DNAT ${exposed_ip} -> ${internal_ip}  (alias on ${EXPOSED_IFACE})"
+            sudo ip addr add "${exposed_ip}/24" dev "${EXPOSED_IFACE}" || true
             sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}" -j DNAT --to-destination "${internal_ip}"
             sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
         done
-    done < "${ip_conf}"
+    done
 
     step_log "Dynamic IP mapping completed"
 
     # -------------------------------------------------------------------------
-    # 8. Mark completion flag and exit
+    # 9. Mark completion flag and exit
     # -------------------------------------------------------------------------
     touch /local/.vm_setup_done
     exit 0
 fi
+
+################################################################################
+# Step 4: All done
+################################################################################
+step_log "All steps already completed. Nothing to do."
 
 ################################################################################
 # Step 4: All done
