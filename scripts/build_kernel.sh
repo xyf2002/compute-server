@@ -135,33 +135,25 @@ fi
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "Installing virtualization tools and setting up VM"
 
-    # -------------------------------------------------------------------------
     # 1. Install KVM / libvirt / uvtool
-    # -------------------------------------------------------------------------
     sudo apt-get update
     sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients \
                             bridge-utils virtinst uvtool
 
-    # -------------------------------------------------------------------------
-    # 2. Download Ubuntu Cloud image
-    # -------------------------------------------------------------------------
+    # 2. Download Ubuntu cloud image
     step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync \
          --source https://cloud-images.ubuntu.com/minimal/daily/ \
          release=bionic arch=amd64
 
-    # -------------------------------------------------------------------------
     # 3. Create VM
-    # -------------------------------------------------------------------------
     VM_NAME="ins${INSTANCE_ID}vm"
     step_log "Creating KVM VM named '$VM_NAME'"
     sudo uvt-kvm create "$VM_NAME" \
          release=bionic arch=amd64 \
          --cpu 4 --memory 4096 --password 1997
 
-    # -------------------------------------------------------------------------
-    # 4. Patch CPU / clock model in VM XML
-    # -------------------------------------------------------------------------
+    # 4. Patch CPU / clock model
     VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
     TMP_XML="/tmp/${VM_NAME}.xml.modified"
     sudo cp "$VM_XML" "$VM_XML.bak"
@@ -180,8 +172,8 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
       <feature policy='disable' name='tsc-deadline'/>\\
     </cpu>\\
     <clock offset='localtime'>\\
-      <timer name='rtc'  present='no' tickpolicy='delay'/>\\
-      <timer name='pit'  present='no' tickpolicy='discard'/>\\
+      <timer name='rtc' present='no' tickpolicy='delay'/>\\
+      <timer name='pit' present='no' tickpolicy='discard'/>\\
       <timer name='hpet' present='no'/>\\
       <timer name='kvmclock' present='yes'/>\\
     </clock>" "$TMP_XML"
@@ -192,75 +184,49 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo virsh destroy "$VM_NAME" || true
     sudo virsh start "$VM_NAME"
 
-    # -------------------------------------------------------------------------
-    # 5. Enable IP forwarding & flush old iptables rules
-    # -------------------------------------------------------------------------
+    # 5. Enable IP forwarding & flush old rules
     step_log "Enabling IP forwarding + flushing iptables"
     sudo iptables -F
     sudo iptables -t nat -F
     echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
 
-    # Basic open rules (optional)
-    sudo iptables -A INPUT   -p udp  -j ACCEPT
-    sudo iptables -A OUTPUT  -p udp  -j ACCEPT
-    sudo iptables -A FORWARD -p tcp  -j ACCEPT
-    sudo iptables -A OUTPUT  -p tcp  -j ACCEPT
-
-    # -------------------------------------------------------------------------
-    # 6. Wait for VM to obtain a virbr0 DHCP address
-    # -------------------------------------------------------------------------
+    # 6. Wait until VM gets a virbr0 address
     step_log "Waiting for VM '$VM_NAME' to obtain IP address..."
-    VM_IP=""
-    for attempt in {1..10}; do
-        VM_IP=$(sudo uvt-kvm ip "$VM_NAME")
-        [[ -n "$VM_IP" ]] && break
+    for i in {1..10}; do
+        VM_IP=$(sudo uvt-kvm ip "$VM_NAME") && break
         sleep 2
     done
-    [[ -z "$VM_IP" ]] && { echo "❌ Could not determine VM IP"; exit 1; }
+    [ -z "$VM_IP" ] && { echo "❌ Could not determine VM IP"; exit 1; }
     step_log "VM '$VM_NAME' has IP $VM_IP"
 
-    # -------------------------------------------------------------------------
-    # 7. Determine host physical interface to hold exposed IP aliases
-    # -------------------------------------------------------------------------
-    # AUTO-DETECT default-route interface; override manually if needed
-    EXPOSED_IFACE=$(ip -o -4 route get 1 | awk '{print $5; exit}')
-    step_log "Using interface '$EXPOSED_IFACE' for exposed IP aliases"
+    # 7. Choose physical interface to host exposed-IP aliases
+    EXPOSE_IFACE=$(ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')
+    step_log "Using interface '${EXPOSE_IFACE}' for exposed-IP aliases"
 
-    # -------------------------------------------------------------------------
-    # 8. Parse ip.conf and add DNAT/SNAT rules (current node only)
-    # -------------------------------------------------------------------------
+    # 8. Read ip.conf and add DNAT/SNAT (only lines for this host)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ip_conf="${SCRIPT_DIR}/../config/ip.conf"
     current_hostname=$(hostname)
 
-    step_log "Applying iptables rules based on ${ip_conf}"
+    step_log "Applying iptables rules from ${ip_conf}"
     grep "^${current_hostname}:" "$ip_conf" | while read -r line; do
         ip_pair=$(echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ')
         echo "$ip_pair" | tr ',' '\n' | while read -r pair; do
-            [[ -z "$pair" || ! "$pair" =~ ":" ]] && continue
-            exposed_ip=$(echo "$pair" | cut -d':' -f1)   # e.g. 192.168.1.1
-            internal_ip=$(echo "$pair" | cut -d':' -f2)  # e.g. 192.168.122.5
+            [ -z "$pair" ] && continue
+            exposed_ip=${pair%%:*}
+            internal_ip=${pair##*:}
 
-            step_log "DNAT ${exposed_ip} -> ${internal_ip}  (alias on ${EXPOSED_IFACE})"
-            sudo ip addr add "${exposed_ip}/24" dev "${EXPOSED_IFACE}" || true
+            step_log "Mapping ${exposed_ip} -> ${internal_ip}"
+            sudo ip addr add "${exposed_ip}/24" dev "${EXPOSE_IFACE}" || true
             sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}" -j DNAT --to-destination "${internal_ip}"
             sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
         done
     done
 
     step_log "Dynamic IP mapping completed"
-
-    # -------------------------------------------------------------------------
-    # 9. Mark completion flag and exit
-    # -------------------------------------------------------------------------
     touch /local/.vm_setup_done
     exit 0
 fi
-
-################################################################################
-# Step 4: All done
-################################################################################
-step_log "All steps already completed. Nothing to do."
 
 ################################################################################
 # Step 4: All done
