@@ -126,46 +126,54 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
 fi
 
 ################################################################################
-# Step 3: VM Setup
+# Step 3: VM setup & dynamic IP mapping via ip.conf
 ################################################################################
-
+# Preconditions:
+#   - /local/.tsc_done exists  : fake_tsc already inserted
+#   - /local/.vm_setup_done NOT exists : VM not provisioned yet
+################################################################################
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log "Installing virtualization tools and setting up VM"
-    # Tool for simplifying the creation of Ubuntu VMs
+    # -------------------------------------------------------------------------
+    # 1. Install KVM / libvirt / uvtool
+    # -------------------------------------------------------------------------
+    sudo apt-get update
+    sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients \
+                            bridge-utils virtinst uvtool
 
-    sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virtinst uvtool
-    # Pull image tags
+    # -------------------------------------------------------------------------
+    # 2. Download Ubuntu Cloud image (bionic-minimal, AMD64)
+    # -------------------------------------------------------------------------
     step_log "Syncing Ubuntu cloud image"
-    sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/minimal/daily/ release=bionic arch=amd64
+    sudo uvt-simplestreams-libvirt sync \
+         --source https://cloud-images.ubuntu.com/minimal/daily/ \
+         release=bionic arch=amd64
 
+    # -------------------------------------------------------------------------
+    # 3. Create VM
+    # -------------------------------------------------------------------------
     VM_NAME="ins${INSTANCE_ID}vm"
-    STATIC_IP="192.168.1.$((INSTANCE_ID + 1))"
-
     step_log "Creating KVM VM named '$VM_NAME'"
-    sudo uvt-kvm create "$VM_NAME" release=bionic arch=amd64 --cpu 4 --memory 4096 --password 1997
+    sudo uvt-kvm create "$VM_NAME" \
+         release=bionic arch=amd64 \
+         --cpu 4 --memory 4096 --password 1997
 
-    step_log "Modifying /etc/libvirt/qemu/$VM_NAME.xml to patch CPU and clock settings"
-        VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
-        TMP_XML="/tmp/${VM_NAME}.xml.modified"
+    # -------------------------------------------------------------------------
+    # 4. Patch CPU / clock model in VM XML
+    # -------------------------------------------------------------------------
+    VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
+    TMP_XML="/tmp/${VM_NAME}.xml.modified"
+    sudo cp "$VM_XML" "$VM_XML.bak"
 
-        sudo cp "$VM_XML" "$VM_XML.bak"
-
-        step_log "Deleting two lines after </features>"
-        sudo awk '
-        /<\/features>/ {
-            print;
-            skip = 2;
-            next;
-        }
-        skip > 0 {
-            skip--;
-            next;
-        }
+    step_log "Deleting two lines after </features>"
+    sudo awk '
+        /<\/features>/ { print; skip=2; next }
+        skip>0 { skip--; next }
         { print }
-        ' "$VM_XML" > "$TMP_XML"
+    ' "$VM_XML" > "$TMP_XML"
 
-        step_log "Inserting new <cpu> and <clock> blocks"
-        sudo sed -i "/<\/features>/a \
+    step_log "Inserting new <cpu> and <clock> blocks"
+    sudo sed -i "/<\/features>/a \
     <cpu mode='host-passthrough' check='none'>\\
       <feature policy='disable' name='rdtscp'/>\\
       <feature policy='disable' name='tsc-deadline'/>\\
@@ -177,44 +185,88 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
       <timer name='kvmclock' present='yes'/>\\
     </clock>" "$TMP_XML"
 
-        step_log "Replacing $VM_NAME.xml with modified version and redefining domain"
-        sudo mv "$TMP_XML" "$VM_XML"
-        sudo virsh define "$VM_XML"
+    step_log "Redefining domain with patched XML"
+    sudo mv "$TMP_XML" "$VM_XML"
+    sudo virsh define "$VM_XML"
+    sudo virsh destroy "$VM_NAME" || true
+    sudo virsh start "$VM_NAME"
 
-        sudo virsh destroy "$VM_NAME"
-        sudo virsh start "$VM_NAME"
+    # -------------------------------------------------------------------------
+    # 5. Enable IP forwarding & flush old iptables rules
+    # -------------------------------------------------------------------------
+    step_log "Enabling IP forwarding + flushing iptables"
+    sudo iptables -F
+    echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
 
-        step_log "Assigning fixed alias IP 192.168.1.$((INSTANCE_ID + 1)) for VM"
+    # (Optional) Allow generic TCP/UDP/SCTP traffic
+    sudo iptables -A INPUT  -p udp  -j ACCEPT
+    sudo iptables -A FORWARD -p tcp -j ACCEPT
+    sudo iptables -A OUTPUT -p tcp -j ACCEPT
+    sudo iptables -A OUTPUT -p udp -j ACCEPT
+    sudo iptables -A INPUT  -p sctp -j ACCEPT
+    sudo iptables -A FORWARD -p sctp -j ACCEPT
+    sudo iptables -A OUTPUT -p sctp -j ACCEPT
 
-        step_log "Enabling IP forwarding"
-        echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
+    # -------------------------------------------------------------------------
+    # 6. Wait VM to obtain an IP from virbr0 DHCP
+    # -------------------------------------------------------------------------
+    step_log "Waiting for VM '$VM_NAME' to obtain IP address..."
+    VM_IP=""
+    for attempt in {1..10}; do
+        VM_IP=$(sudo uvt-kvm ip "$VM_NAME")
+        [[ -n "$VM_IP" ]] && break
+        sleep 2
+    done
 
-        step_log "Waiting for VM $VM_NAME to obtain IP address..."
-        VM_IP=""
-        for attempt in {1..10}; do
-            VM_IP=$(sudo uvt-kvm ip "$VM_NAME")
-            if [ -n "$VM_IP" ]; then
-                break
+    if [[ -z "$VM_IP" ]]; then
+        echo "❌ Could not determine IP address for VM $VM_NAME"
+        exit 1
+    fi
+    step_log "VM '$VM_NAME' has IP $VM_IP"
+
+    # -------------------------------------------------------------------------
+    # 7. Parse ip.conf and create DNAT / SNAT rules
+    # -------------------------------------------------------------------------
+    # ip.conf path:   <repo-root>/config/ip.conf
+    # -------------------------------------------------------------------------
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    ip_conf="${SCRIPT_DIR}/../config/ip.conf"
+    current_hostname=$(hostname)
+
+    step_log "Applying iptables rules based on ${ip_conf}"
+    while read -r line || [[ -n "$line" ]]; do
+        # Skip blank lines and comments
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+        node=$(echo "$line" | cut -d':' -f1)
+        ip_mapping=$(echo "$line" | sed -E "s/^[^:]+://g" | tr -d '{}\" ')
+
+        # Iterate over each key:value pair
+        echo "$ip_mapping" | tr ',' '\n' | while read -r pair; do
+            [[ -z "$pair" || ! "$pair" =~ ":" ]] && continue
+            first_ip=$(echo "$pair" | cut -d':' -f1)   # exposed IP (11.0.0.x)
+            second_ip=$(echo "$pair" | cut -d':' -f2)  # internal IP (192.168.122.x)
+
+            if [[ "$node" == "$current_hostname" ]]; then
+                # Current host owns the VM -> forward traffic to its VM
+                echo "[${current_hostname}] DNAT ${first_ip} -> ${second_ip}"
+                sudo ip addr add "${first_ip}/24" dev virbr0 || true
+                sudo iptables -t nat -A PREROUTING  -d "${first_ip}" -j DNAT --to-destination "${second_ip}"
+                sudo iptables -t nat -A POSTROUTING -s "${second_ip}" -j MASQUERADE
+            else
+                # Remote host: add reverse rule so peer can reach our first_ip
+                echo "[${current_hostname}] reverse DNAT ${second_ip} -> ${first_ip} (for ${node})"
+                sudo iptables -t nat -A PREROUTING  -d "${second_ip}" -j DNAT --to-destination "${first_ip}"
+                sudo iptables -t nat -A POSTROUTING -s "${first_ip}"  -j MASQUERADE
             fi
-            sleep 2
         done
+    done < "${ip_conf}"
 
-        if [ -z "$VM_IP" ]; then
-            echo "❌ Could not determine IP address for VM $VM_NAME"
-        else
-            step_log "VM $VM_NAME has IP $VM_IP"
-            step_log "Mapping $STATIC_IP to $VM_IP via iptables"
+    step_log "Dynamic IP mapping completed"
 
-            # Optional: Add host alias IP to virbr0 for local access
-            sudo ip addr add "$STATIC_IP/24" dev virbr0 || true
-
-            # NAT rules
-            sudo iptables -t nat -A PREROUTING -d "$STATIC_IP" -j DNAT --to-destination "$VM_IP"
-            sudo iptables -t nat -A POSTROUTING -s "$VM_IP" -j MASQUERADE
-        fi
-
-
-
+    # -------------------------------------------------------------------------
+    # 8. Mark completion flag and exit
+    # -------------------------------------------------------------------------
     touch /local/.vm_setup_done
     exit 0
 fi
@@ -222,5 +274,4 @@ fi
 ################################################################################
 # Step 4: All done
 ################################################################################
-
 step_log "All steps already completed. Nothing to do."
