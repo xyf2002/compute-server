@@ -126,79 +126,91 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
 fi
 
 ################################################################################
-# Step 3: VM setup  +  static virbr0 IP via cloud-init
+# Step 3: VM setup — uvt-kvm create ► virsh set MAC ► 固定 IP (DHCP host 条目)
 ################################################################################
 # Preconditions
 #   – /local/.tsc_done exists
 #   – /local/.vm_setup_done NOT exists
 ################################################################################
 if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
-    step_log "Installing virtualization tools and creating fixed-IP VM"
+    step_log "Installing virtualization tools and creating VM (uvt-kvm + static MAC)"
 
     # 1. Packages
     sudo apt-get update
     sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients \
                             bridge-utils virtinst uvtool
 
-    # 2. Grab latest minimal cloud image (once per host)
+    # 2. Sync cloud image (once per host)
     step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync \
          --source https://cloud-images.ubuntu.com/minimal/daily/ \
          release=bionic arch=amd64
 
-    # 3. Derive names + fixed addresses from INSTANCE_ID
+    # 3. Names & deterministic IP/MAC
     VM_NAME="ins${INSTANCE_ID}vm"
-    INTERNAL_IP="192.168.122.$((4 + INSTANCE_ID))"      # 4,5,6 …
-    EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # 1,2,3 …
+    INTERNAL_IP="192.168.122.$((4 + INSTANCE_ID))"      # e.g. 4,5,6
+    EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
+    STATIC_MAC="52:54:00:aa:bb:$(printf '%02x' $((4 + INSTANCE_ID)))"  # 04/05/06
 
     step_log "VM  = ${VM_NAME}"
-    step_log "Int = ${INTERNAL_IP}   /   Ext = ${EXPOSED_IP}"
+    step_log "Int = ${INTERNAL_IP}"
+    step_log "MAC = ${STATIC_MAC}"
 
-    # 4. Build a tiny cloud-init seed (meta & user data)
-    SEED_DIR="$(mktemp -d)"
-    cat >"${SEED_DIR}/meta-data" <<EOF
-instance-id: ${VM_NAME}
-local-hostname: ${VM_NAME}
-EOF
+    # 4. Create VM (uvt-kvm, DHCP 模式即可)
+    if ! sudo uvt-kvm create "${VM_NAME}" \
+            release=bionic arch=amd64 \
+            --cpu 4 --memory 4096 --password 1997; then
+        echo "❌ uvt-kvm create failed, aborting"; exit 1
+    fi
 
-    cat >"${SEED_DIR}/user-data" <<EOF
-#cloud-config
-network:
-  version: 2
-  ethernets:
-    ens3:
-      dhcp4: false
-      addresses: [${INTERNAL_IP}/24]
-      gateway4: 192.168.122.1
-      nameservers: {addresses: [8.8.8.8,1.1.1.1]}
-EOF
+    # 5. Shut down VM and patch MAC address
+    step_log "Shutting VM down to patch MAC"
+    sudo virsh shutdown "${VM_NAME}"
+    # 等待关机
+    for i in {1..20}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        [[ "$state" == "shut off" ]] && break
+        sleep 1
+    done
+    if [[ "$state" != "shut off" ]]; then
+        echo "❌ VM did not shut off, aborting"; exit 1
+    fi
 
-    # 5. Create VM with the seed
-    step_log "Creating KVM VM '${VM_NAME}' with static IP ${INTERNAL_IP}"
-    sudo uvt-kvm create "${VM_NAME}" \
-        release=bionic arch=amd64 \
-        --cpu 4 --memory 4096 --password 1997 \
-        --cloud-init meta-data="${SEED_DIR}/meta-data",user-data="${SEED_DIR}/user-data"
-
-    # 6. Optional: patch CPU / clock model (kept from your original script)
+    # 6. Edit XML to set static MAC
     VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
-    TMP_XML="/tmp/${VM_NAME}.xml.modified"
-    sudo cp "$VM_XML" "$VM_XML.bak"
-    sudo awk '/<\/features>/ {print;skip=2;next} skip>0 {skip--;next} {print}' "$VM_XML" >"$TMP_XML"
-    sudo sed -i "/<\/features>/a \
-      <cpu mode='host-passthrough' check='none'><feature policy='disable' name='rdtscp'/><feature policy='disable' name='tsc-deadline'/></cpu>\
-      <clock offset='localtime'><timer name='rtc' present='no' tickpolicy='delay'/><timer name='pit' present='no' tickpolicy='discard'/><timer name='hpet' present='no'/><timer name='kvmclock' present='yes'/></clock>" "$TMP_XML"
-    sudo mv "$TMP_XML" "$VM_XML"
-    sudo virsh define "$VM_XML"
-    sudo virsh destroy "$VM_NAME" || true
-    sudo virsh start   "$VM_NAME"
+    sudo virsh dumpxml "${VM_NAME}" > "${VM_XML}"
+    sudo sed -i -E "0,/<mac address='[^']*'/ s//<mac address='${STATIC_MAC}'/" "${VM_XML}"
+    sudo virsh define "${VM_XML}"
 
-    # remove temp seed directory
-    rm -rf "${SEED_DIR}"
+    # 7. Ensure default network has host entry
+    NET_XML="/etc/libvirt/qemu/networks/default.xml"
+    if ! grep -q "${STATIC_MAC}" "${NET_XML}"; then
+      step_log "Adding DHCP host entry for ${VM_NAME} in default network"
+      sudo sed -i -E "/<range /a \\\
+      <host mac='${STATIC_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>" "${NET_XML}"
+      sudo virsh net-destroy default
+      sudo virsh net-undefine default
+      sudo virsh net-define "${NET_XML}"
+      sudo virsh net-start  default
+      sudo virsh net-autostart default
+    fi
 
-    # 7. Mark done; the alias/NAT step runs separately
+    # 8. Start VM
+    sudo virsh start "${VM_NAME}"
+
+    # 9. Wait until DHCP assigns the fixed IP
+    step_log "Waiting for ${VM_NAME} to get IP ${INTERNAL_IP}"
+    for i in {1..30}; do
+        cur_ip=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
+        [[ "${cur_ip}" == "${INTERNAL_IP}" ]] && break
+        sleep 2
+    done
+    [[ "${cur_ip}" != "${INTERNAL_IP}" ]] && echo "⚠️  VM IP is ${cur_ip:-N/A}, expected ${INTERNAL_IP}"
+
+    # 10. Done
     touch /local/.vm_setup_done
 fi
+
 ################################################################################
 # Step 4: Exposed-IP alias  &  NAT rules (runs once per host)
 ################################################################################
@@ -222,10 +234,10 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ip_conf="${SCRIPT_DIR}/../config/ip.conf"
     host=$(hostname)
-
-    line=$(grep "^${host}:" "${ip_conf}" || true)
+    short_host=${host%%.*}
+    line=$(grep "^${short_host}:" "${ip_conf}" || true)
     if [ -z "$line" ]; then
-        step_log "❌ No entry for '${host}' in ${ip_conf}; skipping NAT setup"
+        step_log "❌ No entry for '${short_host}' in ${ip_conf}; skipping NAT setup"
         touch /local/.net_setup_done
         exit 0
     fi
