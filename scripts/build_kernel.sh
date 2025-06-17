@@ -19,6 +19,10 @@ function step_log() {
     echo ""
     echo "====================[ $1 ]===================="
     date
+    if [ -n "$2" ]; then
+        echo ""
+        echo "$2"
+    fi
     echo ""
 }
 
@@ -110,12 +114,13 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
     step_log "Unloading existing KVM modules (if any)"
         sudo rmmod kvm_intel || true
         sudo rmmod kvm || true
-        sudo ./init
+
 
     step_log "Inserting custom_tsc.ko"
     sudo insmod custom_tsc.ko
     sudo modprobe kvm
     sudo modprobe kvm_intel
+    sudo ./init
 
     step_log "Re-loading KVM modules"
 
@@ -205,6 +210,10 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
             sudo virsh start "$VM_NAME"
 
 
+    domif_output=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
+    step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output}"
+
+
     # 5. Shut down VM and patch MAC address
     step_log "Shutting VM down to patch MAC"
     sudo virsh shutdown "${VM_NAME}"
@@ -217,12 +226,6 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     if [[ "$state" != "shut off" ]]; then
         echo "❌ VM did not shut off, aborting"; exit 1
     fi
-
-    # 6. Edit XML to set static MAC
-    VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
-    sudo virsh dumpxml "${VM_NAME}" > "${VM_XML}"
-    sudo sed -i -E "0,/<mac address='[^']*'/ s//<mac address='${STATIC_MAC}'/" "${VM_XML}"
-    sudo virsh define "${VM_XML}"
 
     # 7. Ensure default network has host entry
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
@@ -239,6 +242,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     # 8. Start VM
     sudo virsh start "${VM_NAME}"
+
+    domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
+    step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
 
     # 9. Wait until DHCP assigns the fixed IP
     step_log "Waiting for ${VM_NAME} to get IP ${INTERNAL_IP}"
