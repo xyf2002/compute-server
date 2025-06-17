@@ -164,6 +164,47 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
         echo "❌ uvt-kvm create failed, aborting"; exit 1
     fi
 
+     step_log "Modifying /etc/libvirt/qemu/$VM_NAME.xml to patch CPU and clock settings"
+            VM_XML="/etc/libvirt/qemu/${VM_NAME}.xml"
+            TMP_XML="/tmp/${VM_NAME}.xml.modified"
+
+            sudo cp "$VM_XML" "$VM_XML.bak"
+
+            step_log "Deleting two lines after </features>"
+            sudo awk '
+            /<\/features>/ {
+                print;
+                skip = 2;
+                next;
+            }
+            skip > 0 {
+                skip--;
+                next;
+            }
+            { print }
+            ' "$VM_XML" > "$TMP_XML"
+
+            step_log "Inserting new <cpu> and <clock> blocks"
+            sudo sed -i "/<\/features>/a \
+        <cpu mode='host-passthrough' check='none'>\\
+          <feature policy='disable' name='rdtscp'/>\\
+          <feature policy='disable' name='tsc-deadline'/>\\
+        </cpu>\\
+        <clock offset='localtime'>\\
+          <timer name='rtc' present='no' tickpolicy='delay'/>\\
+          <timer name='pit' present='no' tickpolicy='discard'/>\\
+          <timer name='hpet' present='no'/>\\
+          <timer name='kvmclock' present='yes'/>\\
+        </clock>" "$TMP_XML"
+
+            step_log "Replacing $VM_NAME.xml with modified version and redefining domain"
+            sudo mv "$TMP_XML" "$VM_XML"
+            sudo virsh define "$VM_XML"
+
+            sudo virsh destroy "$VM_NAME"
+            sudo virsh start "$VM_NAME"
+
+
     # 5. Shut down VM and patch MAC address
     step_log "Shutting VM down to patch MAC"
     sudo virsh shutdown "${VM_NAME}"
