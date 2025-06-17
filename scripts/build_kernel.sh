@@ -96,13 +96,19 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
     if [ -f init.c ]; then
             step_log "Compiling and running init.c"
             gcc init.c -o init
-            sudo ./init
+
     fi
 
     if [ -f shared.c ]; then
         step_log "Compiling shared.c"
         gcc shared.c -o shared
     fi
+
+        step_log "Inserting custom_tsc.ko"
+        sudo insmod custom_tsc.ko
+        sudo modprobe kvm
+        sudo modprobe kvm_intel
+        sudo ./init 
 
     step_log "Building fake_tsc module"
     make
@@ -111,10 +117,7 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
         sudo rmmod kvm_intel || true
         sudo rmmod kvm || true
 
-    step_log "Inserting custom_tsc.ko"
-    sudo insmod custom_tsc.ko
-    sudo modprobe kvm
-    sudo modprobe kvm_intel
+
 
     step_log "Re-loading KVM modules"
 
