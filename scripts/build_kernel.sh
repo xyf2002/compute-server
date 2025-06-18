@@ -156,11 +156,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     VM_NAME="ins${INSTANCE_ID}vm"
     INTERNAL_IP="192.168.122.$((4 + INSTANCE_ID))"      # e.g. 4,5,6
     EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
-    STATIC_MAC="52:54:00:aa:bb:$(printf '%02x' $((4 + INSTANCE_ID)))"  # 04/05/06
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
-    step_log "MAC = ${STATIC_MAC}"
 
     # 4. Create VM (uvt-kvm, DHCP 模式即可)
     if ! sudo uvt-kvm create "${VM_NAME}" \
@@ -210,8 +208,24 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
             sudo virsh start "$VM_NAME"
 
 
-    domif_output=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
-    step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output}"
+    # --------------------------------------------------------------------- #
+        # 3. Waiting domifaddr return real MAC/IP
+        # --------------------------------------------------------------------- #
+        step_log "Waiting domifaddr for ${VM_NAME}"
+        for i in {1..30}; do
+            domif=$(sudo virsh domifaddr "$VM_NAME" 2>&1)
+            if echo "$domif" | grep -q 'ipv4'; then
+                break
+            fi
+            sleep 2
+        done
+        step_log "domifaddr output" "$domif"
+
+    REAL_MAC=$(echo "$domif" | awk '/ipv4/ {print $2}')
+
+    if [ -z "$REAL_MAC" ] ; then
+            echo "❌ domifaddr did not return MAC, aborting"; exit 1
+        fi
 ################################################################################
 # Step 3。5   virsh set MAC ► static IP (DHCP host 条目)
 ################################################################################
@@ -233,10 +247,10 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 7. Ensure default network has host entry
     step_log"Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
-    if ! grep -q "${STATIC_MAC}" "${NET_XML}"; then
+    if ! grep -q "$REAL_MAC" "$NET_XML"; then
       step_log "Adding DHCP host entry for ${VM_NAME} in default network"
       sudo sed -i -E "/<range /a \\\
-      <host mac='${STATIC_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>" "${NET_XML}"
+      <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
       #Restart DHCP service
       sudo virsh net-destroy default
       sudo virsh net-start  default
@@ -256,6 +270,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
         sudo virsh destroy "${VM_NAME}"
         sleep 2
     fi
+
+    sudo service libvirtd restart
+
     sudo virsh start "${VM_NAME}"
 
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
