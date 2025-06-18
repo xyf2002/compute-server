@@ -253,7 +253,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
       <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
       #Restart DHCP service
       sudo virsh net-destroy default
+      sleep 5
       sudo virsh net-start  default
+      sleep 5
     fi
 
     # 8. shutdown VM and restarrt it
@@ -272,7 +274,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     fi
 
     sudo service libvirtd restart
-
+    sleep 5
     sudo virsh start "${VM_NAME}"
 
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
@@ -288,11 +290,15 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     [[ "${cur_ip}" != "${INTERNAL_IP}" ]] && echo "⚠️  VM IP is ${cur_ip:-N/A}, expected ${INTERNAL_IP}"
 
     # 10. Done
-    sudo virsh net-destory default
-    sudo virsh net-start default
-    sudo virsh shutdown "${VM_NAME}"
-    sudo service libvirtd restart
-    sudo virsh start "${VM_NAME}"
+#    sudo virsh net-destory default
+#    sleep 2
+#    sudo virsh net-start default
+#    sleep 2
+#    sudo virsh shutdown "${VM_NAME}"
+#    sleep 5
+#    sudo service libvirtd restart
+#    sleep 5
+#    sudo virsh start "${VM_NAME}"
     touch /local/.vm_setup_done
 fi
 
