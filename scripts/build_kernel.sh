@@ -211,17 +211,19 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # --------------------------------------------------------------------- #
         # 3. Waiting domifaddr return real MAC/IP
         # --------------------------------------------------------------------- #
-        step_log "Waiting domifaddr for ${VM_NAME}"
-        for i in {1..30}; do
-            domif=$(sudo virsh domifaddr "$VM_NAME" 2>&1)
-            if echo "$domif" | grep -q 'ipv4'; then
-                break
-            fi
-            sleep 2
-        done
-        step_log "domifaddr output" "$domif"
+      step_log "Waiting domifaddr for ${VM_NAME}"
+      for i in {1..30}; do
+          domif=$(sudo virsh domifaddr "$VM_NAME" 2>&1)
+          if echo "$domif" | grep -q 'ipv4'; then
+              break
+          fi
+          sleep 2
+      done
 
-    REAL_MAC=$(echo "$domif" | awk '/ipv4/ {print $2}')
+      REAL_MAC=$(echo "$domif" | awk '/ipv4/ {print $2}')
+      step_log "Detected MAC=$REAL_MAC"
+
+
 
     if [ -z "$REAL_MAC" ] ; then
             echo "❌ domifaddr did not return MAC, aborting"; exit 1
@@ -235,44 +237,60 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     step_log"Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
     if ! grep -q "$REAL_MAC" "$NET_XML"; then
-      step_log "Adding DHCP host entry for ${VM_NAME} in default network"
-      sudo sed -i -E "/<range /a \\\
-      <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
-      #Restart DHCP service
-      step_log "Restarting libvirt default network"
-      sudo virsh net-destroy default
-      sudo virsh net-start  default
+#      step_log "Adding DHCP host entry for ${VM_NAME} in default network"
+#      sudo sed -i -E "/<range /a \\\
+#      <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
+        step_log "Adding DHCP host entry ${REAL_MAC} → ${INTERNAL_IP}"
+        virsh net-update default add-last ip-dhcp-host \
+            "<host mac='${REAL_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>" \
+            --live --config
     fi
 
+#    sudo virsh net-update default add-last ip-dhcp-host \
+#         "<host mac='${REAL_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>" \
+#         --live --config
+
+
+
+    step_log "Restarting libvirt default network"
+    sudo virsh net-destroy default
+    sudo virsh net-start  default
+
     # 8. shutdown VM and restarrt it
+    step_log "Shutting down ${VM_NAME} to apply changes"
     sudo virsh shutdown "${VM_NAME}"
-#    for i in {1..20}; do
-#        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
-#        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
-#        [[ "$state" == "shut off" ]] && break
-#        sleep 1
-#    done
+    for i in {1..20}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+        [[ "$state" == "shut off" ]] && break
+        sleep 1
+    done
 
     step_log "Restarting libvirtd service"
     sudo service libvirtd restart
     step_log "Starting ${VM_NAME} again"
     sudo virsh start "${VM_NAME}"
 
-    domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
-    step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
 
-    # 9. Wait until DHCP assigns the fixed IP
-    step_log "Waiting for ${VM_NAME} to get IP ${INTERNAL_IP}"
-    for i in {1..30}; do
-        cur_ip=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
-        [[ "${cur_ip}" == "${INTERNAL_IP}" ]] && break
-        sleep 2
-    done
-    [[ "${cur_ip}" != "${INTERNAL_IP}" ]] && echo "⚠️  VM IP is ${cur_ip:-N/A}, expected ${INTERNAL_IP}"
+
+
+#    domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
+#    step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
+#
+#    # 9. Wait until DHCP assigns the fixed IP
+#    step_log "Waiting for ${VM_NAME} to get IP ${INTERNAL_IP}"
+#    for i in {1..30}; do
+#        cur_ip=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
+#        [[ "${cur_ip}" == "${INTERNAL_IP}" ]] && break
+#        sleep 2
+#    done
+#    [[ "${cur_ip}" != "${INTERNAL_IP}" ]] && echo "⚠️  VM IP is ${cur_ip:-N/A}, expected ${INTERNAL_IP}"
 
     # 10. Done
     touch /local/.vm_setup_done
 fi
+
+step_log "==================================[ VM setup done ]================================="
 
 ################################################################################
 # Step 4: Exposed-IP alias  &  NAT rules (runs once per host)
