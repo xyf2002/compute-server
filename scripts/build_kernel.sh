@@ -231,19 +231,6 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 ################################################################################
 ################################################################################
 
-#    # 5. Shut down VM and patch MAC address
-#    step_log "Shutting VM down to patch MAC"
-#    sudo virsh shutdown "${VM_NAME}"
-#    # 等待关机
-#    for i in {1..20}; do
-#        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
-#        [[ "$state" == "shut off" ]] && break
-#        sleep 1
-#    done
-#    if [[ "$state" != "shut off" ]]; then
-#        echo "❌ VM did not shut off, aborting"; exit 1
-#    fi
-
     # 7. Ensure default network has host entry
     step_log"Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
@@ -252,27 +239,23 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
       sudo sed -i -E "/<range /a \\\
       <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
       #Restart DHCP service
+      step_log "Restarting libvirt default network"
       sudo virsh net-destroy default
       sudo virsh net-start  default
     fi
 
     # 8. shutdown VM and restarrt it
     sudo virsh shutdown "${VM_NAME}"
-    for i in {1..20}; do
-        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
-        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
-        [[ "$state" == "shut off" ]] && break
-        sleep 1
-    done
+#    for i in {1..20}; do
+#        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+#        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+#        [[ "$state" == "shut off" ]] && break
+#        sleep 1
+#    done
 
-    if [[ "$state" != "shut off" ]]; then
-        echo "⚠️  ${VM_NAME} did not shut off in time; forcing shutdown"
-        sudo virsh destroy "${VM_NAME}"
-        sleep 2
-    fi
-
+    step_log "Restarting libvirtd service"
     sudo service libvirtd restart
-
+    step_log "Starting ${VM_NAME} again"
     sudo virsh start "${VM_NAME}"
 
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
