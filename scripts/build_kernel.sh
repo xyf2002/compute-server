@@ -212,35 +212,50 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     domif_output=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
     step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output}"
+################################################################################
+# Step 3。5   virsh set MAC ► static IP (DHCP host 条目)
+################################################################################
+################################################################################
 
-
-    # 5. Shut down VM and patch MAC address
-    step_log "Shutting VM down to patch MAC"
-    sudo virsh shutdown "${VM_NAME}"
-    # 等待关机
-    for i in {1..20}; do
-        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
-        [[ "$state" == "shut off" ]] && break
-        sleep 1
-    done
-    if [[ "$state" != "shut off" ]]; then
-        echo "❌ VM did not shut off, aborting"; exit 1
-    fi
+#    # 5. Shut down VM and patch MAC address
+#    step_log "Shutting VM down to patch MAC"
+#    sudo virsh shutdown "${VM_NAME}"
+#    # 等待关机
+#    for i in {1..20}; do
+#        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+#        [[ "$state" == "shut off" ]] && break
+#        sleep 1
+#    done
+#    if [[ "$state" != "shut off" ]]; then
+#        echo "❌ VM did not shut off, aborting"; exit 1
+#    fi
 
     # 7. Ensure default network has host entry
+    step_log"Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
     if ! grep -q "${STATIC_MAC}" "${NET_XML}"; then
       step_log "Adding DHCP host entry for ${VM_NAME} in default network"
       sudo sed -i -E "/<range /a \\\
       <host mac='${STATIC_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>" "${NET_XML}"
+      #Restart DHCP service
       sudo virsh net-destroy default
-      sudo virsh net-undefine default
-      sudo virsh net-define "${NET_XML}"
       sudo virsh net-start  default
-      sudo virsh net-autostart default
     fi
 
-    # 8. Start VM
+    # 8. shutdown VM and restarrt it
+    sudo virsh shutdown "${VM_NAME}"
+    for i in {1..20}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+        [[ "$state" == "shut off" ]] && break
+        sleep 1
+    done
+
+    if [[ "$state" != "shut off" ]]; then
+        echo "⚠️  ${VM_NAME} did not shut off in time; forcing shutdown"
+        sudo virsh destroy "${VM_NAME}"
+        sleep 2
+    fi
     sudo virsh start "${VM_NAME}"
 
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
