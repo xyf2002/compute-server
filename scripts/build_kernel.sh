@@ -265,6 +265,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     fi
     step_log "stopping ${VM_NAME} to change ip address"
+    sudo virsh shutdown "${VM_NAME}"
     for i in {1..200}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
