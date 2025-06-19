@@ -260,10 +260,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sleep 10
     sudo virsh net-start  default
     sleep 10
-
     # 8. shutdown VM and restarrt it
     step_log "Restarting ${VM_NAME} to apply changes"
-    sudo virsh shutdown "${VM_NAME}"
+    sudo virsh destroy "${VM_NAME}"
     for i in {1..20}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
@@ -309,7 +308,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 #    sudo virsh start "${VM_NAME}"
     touch /local/.vm_setup_done
 fi
-
+sudo reboot
 ################################################################################
 # Step 4: Exposed-IP alias  &  NAT rules (runs once per host)
 ################################################################################
