@@ -27,9 +27,9 @@ function step_log() {
 }
 
 GITHUB_TOKEN="$1"
-MACHINE_NUM="$2"
-INSTANCE_ID="$3"
-GITHUB_USERNAME="xyf2002"
+GITHUB_USERNAME="$2"
+MACHINE_NUM="$3"
+INSTANCE_ID="$4"
 USER_HOME="/users/$(whoami)"
 
 kernel_repo="ujjwalpawar/chronos-kernel"

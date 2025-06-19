@@ -39,7 +39,11 @@ pc.defineParameter("isolcpusNumber", "Number of Isolated CPUs",
 pc.defineParameter("k8s", "Install Kubernetes",
                    portal.ParameterType.BOOLEAN, False,
                    advanced=True)
-
+#GitHub parameters
+pc.defineParameter("githubUser",
+                   "GitHub Username",
+                   portal.ParameterType.STRING,
+                   "")
 pc.defineParameter("token", "GitHub Token",
                    portal.ParameterType.STRING, "")
 
@@ -246,7 +250,13 @@ for i in range(0,params.machineNum):
 
     # node.addService(PG.Execute(shell="bash", command="/local/repository/scripts/install_custom_kernel.sh"))
     # command="/local/repository/scripts/build_kernel.sh {}".format(params.token)
-    command="/local/repository/scripts/build_kernel.sh {} {} {}".format(params.token, params.machineNum, i)
+    # command="/local/repository/scripts/build_kernel.sh {} {} {}".format(params.token, params.machineNum, i)
+    command = "/local/repository/scripts/build_kernel.sh {} {} {} {}".format(
+        params.token,           # $1 = token
+        params.githubUser,      # $2 = GitHub username
+        params.machineNum,      # $3 = machine number
+        i)                      # $4 = instance index
+    node.addService(PG.Execute(shell="bash", command=command))
     node.addService(PG.Execute(shell="bash", command=command))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
