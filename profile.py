@@ -189,7 +189,7 @@ rspec.addTour(tour)
 
 
 # Network
-netmask="255.255.255.0"
+netmask="255.255.0.0"
 network = rspec.Link("Network")
 network.link_multiplexing = True
 network.vlan_tagging = True
@@ -250,7 +250,7 @@ for i in range(0,params.machineNum):
     node.addService(PG.Execute(shell="bash", command=command))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
-    iface.addAddress(PG.IPv4Address("192.168.1."+str(i+1+k8s_ip), netmask))
+    iface.addAddress(PG.IPv4Address("192.168.str(i+1+k8s_ip)."+"1", netmask))
     network.addInterface(iface)
     
 for idx, dense_radio in enumerate(params.dense_radios):
