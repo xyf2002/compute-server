@@ -262,7 +262,6 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sleep 10
     # 8. shutdown VM and restarrt it
     step_log "Restarting ${VM_NAME} to apply changes"
-    sudo virsh destroy "${VM_NAME}"
     for i in {1..20}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
@@ -319,7 +318,15 @@ sudo reboot
 ################################################################################
 if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     step_log "Setting alias IP and NAT rules for this host"
-
+    state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+    echo "⏳ Checking state of ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+    [[ "$state" == "shut off" ]] && sudo virsh start ${VM_NAME}
+    for i in {1..200}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        echo "⏳ Waiting for ${VM_NAME} to start... (${i}/20) → state: ${state}"
+        [[ "$state" == "running" ]] && break
+        sleep 1
+    done
     # 1. Flush old tables and turn on forwarding
     sudo iptables -F
     sudo iptables -t nat -F
