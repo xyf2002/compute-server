@@ -308,6 +308,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 #    sudo virsh start "${VM_NAME}"
     touch /local/.vm_setup_done
 fi
+sudo virsh destroy "${VM_NAME}"
 sudo reboot
 ################################################################################
 # Step 4: Exposed-IP alias  &  NAT rules (runs once per host)
