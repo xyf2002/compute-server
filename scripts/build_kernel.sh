@@ -154,7 +154,12 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     # 3. Names & deterministic IP/MAC
     VM_NAME="ins${INSTANCE_ID}vm"
-    INTERNAL_IP="192.168.122.$((4 + INSTANCE_ID))"      # e.g. 4,5,6
+
+    INTERNAL_SUBNET=$((10 + INSTANCE_ID)) # 122,123,124,…
+    INTERNAL_IP="192.168.${INTERNAL_SUBNET}.4"
+    NET_GW_IP="192.168.${INTERNAL_SUBNET}.1"
+    RANGE_START="192.168.${INTERNAL_SUBNET}.2"
+    RANGE_END="192.168.${INTERNAL_SUBNET}.254"
     EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
 
     step_log "VM  = ${VM_NAME}"
@@ -231,31 +236,36 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 ################################################################################
 ################################################################################
 
-#    # 5. Shut down VM and patch MAC address
-#    step_log "Shutting VM down to patch MAC"
-#    sudo virsh shutdown "${VM_NAME}"
-#    # 等待关机
-#    for i in {1..20}; do
-#        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
-#        [[ "$state" == "shut off" ]] && break
-#        sleep 1
-#    done
-#    if [[ "$state" != "shut off" ]]; then
-#        echo "❌ VM did not shut off, aborting"; exit 1
-#    fi
-
-    # 7. Ensure default network has host entry
     step_log "Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
+
     if ! sudo grep -q "$REAL_MAC" "$NET_XML"; then
       step_log "Adding DHCP host entry for ${VM_NAME} in default network"
-      sudo sed -i -E "/<range /a \\\
-      <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
-      #Restart DHCP service
+      sudo sed -i -E "
+        # -- bridge / gateway ----------------------------------------------------
+        0,/<ip address=/{
+            s@<ip address='[0-9.]+' netmask='255\.255\.255\.0'>@<ip address='${NET_GW_IP}' netmask='255.255.255.0'>@
+        }
+
+        # -- DHCP range ----------------------------------------------------------
+        /<range /{
+            s@start='[0-9.]+'@start='${RANGE_START}'@
+            s@end='[0-9.]+'@end='${RANGE_END}'@
+        }
+
+        # -- purge any old host entry for this VM --------------------------------
+        /<dhcp>/,/<\/dhcp>/{
+            /<host .*name='${VM_NAME}'.*\/>/d
+        }
+
+        # -- add fresh host reservation -----------------------------------------
+        /<range /a\\
+            <host mac='${REAL_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>
+        "  "$NET_XML"
 
     fi
     step_log "stopping ${VM_NAME} to change ip address"
-    for i in {1..20}; do
+    for i in {1..200}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
         [[ "$state" == "shut off" ]] && break
@@ -269,12 +279,12 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     fi
     step_log "Restarting libvirt default network"
     sudo virsh net-destroy default
-    sleep 10
+
     step_log "Restarting libvirtd service to apply changes"
     sudo service libvirtd restart
-    sleep 10
+
     sudo systemctl restart libvirtd
-    sleep 10
+
     sudo virsh net-start  default
     sleep 10
     # 8. start VM
@@ -282,6 +292,12 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     step_log "Starting ${VM_NAME} again"
     sudo virsh start "${VM_NAME}"
+    for i in {1..200}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+        [[ "$state" == "running" ]] && break
+        sleep 1
+    done
     sleep 30
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
     step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
