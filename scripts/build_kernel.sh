@@ -282,7 +282,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     step_log "Starting ${VM_NAME} again"
     sudo virsh start "${VM_NAME}"
-
+    sleep 30
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
     step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
 
