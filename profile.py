@@ -250,9 +250,9 @@ for i in range(0,params.machineNum):
     node.addService(PG.Execute(shell="bash", command=command))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
-    iface.addAddress(PG.IPv4Address("192.168.1."+str((i+1+k8s_ip), netmask))
+    iface.addAddress(PG.IPv4Address("192.168.1."+str(i+1+k8s_ip), netmask))
     network.addInterface(iface)
-
+    
 for idx, dense_radio in enumerate(params.dense_radios):
     node = rspec.RawPC("dense-{}".format(dense_radio.device.split("-")[-1]))
     node.disk_image = os
