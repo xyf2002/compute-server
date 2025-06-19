@@ -260,7 +260,7 @@ for idx, dense_radio in enumerate(params.dense_radios):
     node.component_id = dense_radio.device
     # node.hardware_type = params.Hardware
     iface = node.addInterface()
-    iface.addAddress(PG.IPv4Address("192.168.1."+str(i+1+k8s_ip+count), netmask))
+    iface.addAddress(PG.IPv4Address("192.168.1."+str(1+k8s_ip+count), netmask))
     network.addInterface(iface)
     count += 1
 
