@@ -250,8 +250,7 @@ for i in range(0,params.machineNum):
     node.addService(PG.Execute(shell="bash", command=command))
     node.hardware_type = params.Hardware
     iface = node.addInterface()
-    iface.addAddress(PG.IPv4Address("192.168.1."+str((i*2)+1+k8s_ip), netmask))
-    iface.addAddress(PG.IPv4Address("192.168.1."+str((i*2)+2+k8s_ip), netmask))
+    iface.addAddress(PG.IPv4Address("192.168.1."+str(i+1+k8s_ip), netmask))
     network.addInterface(iface)
 
 for idx, dense_radio in enumerate(params.dense_radios):
@@ -274,7 +273,7 @@ for idx, fixed_radio in enumerate(params.fixed_radios_nuc1):
     node.disk_image = os
     node.addService(PG.Execute(shell="bash", command=profileConfigs +"/local/repository/scripts/configure.sh"))
     iface = node.addInterface()
-    iface.addAddress(PG.IPv4Address("192.168.1."+str(1+k8s_ip+count), netmask))
+    iface.addAddress(PG.IPv4Address("192.168.1."+str(i+1+k8s_ip+count), netmask))
     network.addInterface(iface)
     count += 1
 
@@ -295,4 +294,3 @@ for idx, fixed_radio in enumerate(params.fixed_radios_nuc2):
 #
 pc.printRequestRSpec(rspec)
 # type: ignore
-

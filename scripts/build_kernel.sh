@@ -245,25 +245,16 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 #    fi
 
     # 7. Ensure default network has host entry
-    step_log"Edit the default network"
+    step_log "Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
-    if ! grep -q "$REAL_MAC" "$NET_XML"; then
+    if ! sudo grep -q "$REAL_MAC" "$NET_XML"; then
       step_log "Adding DHCP host entry for ${VM_NAME} in default network"
       sudo sed -i -E "/<range /a \\\
       <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
       #Restart DHCP service
 
     fi
-
-    step_log"Restarting libvirt default network"
-    sudo virsh net-destroy default
-    sleep 10
-    sudo virsh net-start  default
-    sleep 10
-
-    # 8. shutdown VM and restarrt it
-    step_log "Restarting ${VM_NAME} to apply changes"
-    sudo virsh shutdown "${VM_NAME}"
+    step_log "stopping ${VM_NAME} to change ip address"
     for i in {1..20}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
@@ -276,15 +267,22 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
         sudo virsh destroy "${VM_NAME}"
         sleep 2
     fi
+    step_log "Restarting libvirt default network"
+    sudo virsh net-destroy default
     sleep 10
     step_log "Restarting libvirtd service to apply changes"
     sudo service libvirtd restart
     sleep 10
     sudo systemctl restart libvirtd
     sleep 10
+    sudo virsh net-start  default
+    sleep 10
+    # 8. start VM
+
+
     step_log "Starting ${VM_NAME} again"
     sudo virsh start "${VM_NAME}"
-
+    sleep 30
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
     step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
 
@@ -309,7 +307,8 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 #    sudo virsh start "${VM_NAME}"
     touch /local/.vm_setup_done
 fi
-
+#sudo virsh destroy "${VM_NAME}"
+#sudo reboot
 ################################################################################
 # Step 4: Exposed-IP alias  &  NAT rules (runs once per host)
 ################################################################################
@@ -319,7 +318,15 @@ fi
 ################################################################################
 if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     step_log "Setting alias IP and NAT rules for this host"
-
+    state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+    echo "⏳ Checking state of ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+    [[ "$state" == "shut off" ]] && sudo virsh start ${VM_NAME}
+    for i in {1..200}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        echo "⏳ Waiting for ${VM_NAME} to start... (${i}/20) → state: ${state}"
+        [[ "$state" == "running" ]] && break
+        sleep 1
+    done
     # 1. Flush old tables and turn on forwarding
     sudo iptables -F
     sudo iptables -t nat -F
