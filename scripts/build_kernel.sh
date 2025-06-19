@@ -245,9 +245,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 #    fi
 
     # 7. Ensure default network has host entry
-    step_log"Edit the default network"
+    step_log "Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
-    if ! grep -q "$REAL_MAC" "$NET_XML"; then
+    if ! sudo grep -q "$REAL_MAC" "$NET_XML"; then
       step_log "Adding DHCP host entry for ${VM_NAME} in default network"
       sudo sed -i -E "/<range /a \\\
       <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
@@ -255,7 +255,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     fi
 
-    step_log"Restarting libvirt default network"
+    step_log "Restarting libvirt default network"
     sudo virsh net-destroy default
     sleep 10
     sudo virsh net-start  default
