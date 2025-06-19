@@ -151,12 +151,12 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo uvt-simplestreams-libvirt sync \
          --source https://cloud-images.ubuntu.com/minimal/daily/ \
          release=bionic arch=amd64
-
+    sudo virsh net-start default
     # 3. Names & deterministic IP/MAC
     VM_NAME="ins${INSTANCE_ID}vm"
-
+  
     INTERNAL_SUBNET=$((10 + INSTANCE_ID)) # 122,123,124,…
-    INTERNAL_IP="192.168.${INTERNAL_SUBNET}.4"
+    INTERNAL_IP="192.168.${INTERNAL_SUBNET}.2"
     NET_GW_IP="192.168.${INTERNAL_SUBNET}.1"
     RANGE_START="192.168.${INTERNAL_SUBNET}.2"
     RANGE_END="192.168.${INTERNAL_SUBNET}.254"
