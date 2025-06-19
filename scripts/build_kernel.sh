@@ -344,47 +344,9 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
         [[ "$state" == "running" ]] && break
         sleep 1
     done
-    # 1. Flush old tables and turn on forwarding
-    sudo iptables -F
-    sudo iptables -t nat -F
-    echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
-
-    # 2. Find the primary outbound NIC (first 'dev' after default route)
-    EXPOSE_IFACE=$(ip route get 1 | awk '{for(i=1;i<=NF;i++) if ($i=="dev"){print $(i+1);exit}}')
-    step_log "Outbound interface detected: ${EXPOSE_IFACE}"
-
-    # 3. Parse ip.conf line that matches this host
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    ip_conf="${SCRIPT_DIR}/../config/ip.conf"
-    host=$(hostname)
-    short_host=${host%%.*}
-    line=$(grep "^${short_host}:" "${ip_conf}" || true)
-    if [ -z "$line" ]; then
-        step_log "❌ No entry for '${short_host}' in ${ip_conf}; skipping NAT setup"
-        touch /local/.net_setup_done
-        exit 0
-    fi
-
-    # 4. Iterate each exposed:internal pair for this host
-    echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ' | tr ',' '\n' | while read -r pair; do
-        [ -z "$pair" ] && continue
-        exposed_ip=${pair%%:*}
-        internal_ip=${pair##*:}
-
-        step_log "Alias ${exposed_ip}  →  DNAT to ${internal_ip}"
-        sudo ip addr add "${exposed_ip}/24" dev "${EXPOSE_IFACE}" label "${EXPOSE_IFACE}:exposed" || true
-        sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}"  -j DNAT --to-destination "${internal_ip}"
-        sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
-    done
-
-    # 5. Show final NAT table for verification
-    step_log "PREROUTING:"
-    sudo iptables -t nat -L PREROUTING  -n
-    step_log "POSTROUTING:"
-    sudo iptables -t nat -L POSTROUTING -n
-
-    touch /local/.net_setup_done
-fi
+    ./generate_config.sh  $MACHINE_NUM
+    ./set_ip.sh
+    
 
 
 
