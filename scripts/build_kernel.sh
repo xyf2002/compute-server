@@ -344,9 +344,10 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
         [[ "$state" == "running" ]] && break
         sleep 1
     done
+    ./add-secondary.sh
     ./generate_config.sh  $MACHINE_NUM
     ./set_ip.sh
-    
+
 
 
 
