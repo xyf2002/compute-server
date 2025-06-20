@@ -34,9 +34,21 @@ install_deps() {
 }
 
 install_k0s() {
-  log "Installing k0s ($K0S_VERSION_CHANNEL)"
-  curl -sSLf https://get.k0s.sh | sudo bash -s -- "$K0S_VERSION_CHANNEL" >>"$LOG_FILE"
+  log "Downloading k0s installer script"
+  curl -fsSL https://get.k0s.sh -o /tmp/get-k0s.sh
+  chmod +x /tmp/get-k0s.sh
+
+  log "Running k0s installer"
+  sudo /tmp/get-k0s.sh "$K0S_VERSION_CHANNEL" >>"$LOG_FILE" 2>&1
+
+  if [ -x "$K0S_BIN" ]; then
+    log "k0s version: $($K0S_BIN version)"
+  else
+    ls -l /usr/local/bin >>"$LOG_FILE"
+    fail "k0s installation failed: $K0S_BIN not found or not executable"
+  fi
 }
+
 
 wait_for_token() {         # $1 = controller_ip
   local ctl_ip=$1; local token=""
