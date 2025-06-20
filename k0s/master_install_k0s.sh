@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 LOG_FILE="/local/k0s_master.log"
-source /local/repository/k0s/common.sh
+#source /local/repository/k0s/common.sh
+source /tmp/common.sh
 
 install_deps
 install_k0s
