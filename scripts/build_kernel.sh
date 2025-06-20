@@ -373,32 +373,45 @@ fi
 #   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
 #   – /local/.k0s_in_vm_done does NOT exist  (k0s has not yet been installed inside the VM)
 ################################################################################
+################################################################################
+# Step 5: Install k0s inside the VM
+################################################################################
+# Preconditions
+#   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
+#   – /local/.k0s_in_vm_done does NOT exist  (k0s has not yet been installed inside the VM)
+################################################################################
 if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
     step_log "Installing k0s inside VM ${VM_NAME} (${INTERNAL_IP})" | tee -a "$K0S_LOG"
 
+    # Install sshpass if not already installed
+    if ! command -v sshpass >/dev/null 2>&1; then
+        step_log "Installing sshpass"
+        sudo apt-get install -y sshpass
+    fi
+
+    password="1997"
     SSH_OPTS="-oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null"
-    #StrictHostKeyChecking=accept-new
 
     # 1. Copy the three k0s helper scripts into /tmp inside the guest
-    scp $SSH_OPTS "${K0S_DIR}"/*.sh ubuntu@"${INTERNAL_IP}":/tmp/ | tee -a "$K0S_LOG"
+    sshpass -p "$password" scp $SSH_OPTS "${K0S_DIR}"/*.sh ubuntu@"${INTERNAL_IP}":/tmp/ | tee -a "$K0S_LOG"
 
     # 2. Worker VMs need the ubuntu private key so they can SSH back to the controller VM
     if [ "$INSTANCE_ID" -ne 0 ]; then
-        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "mkdir -p /ubuntu/.ssh && chmod 700 /ubuntu/.ssh"
-        scp $SSH_OPTS /ubuntu/.ssh/id_rsa* ubuntu@"${INTERNAL_IP}":/ubuntu/.ssh/ | tee -a "$K0S_LOG"
-        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "chmod 600 /ubuntu/.ssh/id_rsa"
+        sshpass -p "$password" ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "mkdir -p /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
+        sshpass -p "$password" scp $SSH_OPTS /home/ubuntu/.ssh/id_rsa* ubuntu@"${INTERNAL_IP}":/home/ubuntu/.ssh/ | tee -a "$K0S_LOG"
+        sshpass -p "$password" ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "chmod 600 /home/ubuntu/.ssh/id_rsa"
     fi
 
     # 3. Run the relevant install script inside the guest
     if [ "$INSTANCE_ID" -eq 0 ]; then
         # Controller VM
         ROLE_SCRIPT="/tmp/$(basename "$MASTER_SCRIPT")"
-        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT" | tee -a "$K0S_LOG"
+        sshpass -p "$password" ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT" | tee -a "$K0S_LOG"
     else
         # Worker VM
         ROLE_SCRIPT="/tmp/$(basename "$WORKER_SCRIPT")"
         CONTROLLER_VM_IP="192.168.10.2"   # internal IP of the controller VM
-        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP" | tee -a "$K0S_LOG"
+        sshpass -p "$password" ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP" | tee -a "$K0S_LOG"
     fi
 
     touch /local/.k0s_in_vm_done
