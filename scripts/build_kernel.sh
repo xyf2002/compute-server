@@ -354,12 +354,15 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     cd  /local/repository/scripts
     step_log "Adding ips"
     sudo /local/repository/scripts/add-secondary.sh
+    sleep 5
     step_log "Generating json"
     sudo /local/repository/scripts/generate_config.sh  $MACHINE_NUM
+    sleep 5
     step_log "Adding IP TABLES"
     sudo /local/repository/scripts/set_ip.sh
+    sleep 5
     step_log "Installing ssh pass"
-    sudo apt-get install sshpass
+    sudo apt-get -y install sshpass
     password="1997"
     SSH_OPTS="-oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null"
     step_log "create ssh keys"
@@ -369,7 +372,8 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
 
     step_log "Copying script to add ip address"
     scp $SSH_OPTS /local/repository/scripts/add-secondary_vm.sh ubuntu@${INTERNAL_IP}:~/
-            step_log "calling copied script"
+    step_log "calling copied script"
+    
     ssh $SSH_OPTS ubuntu@${INTERNAL_IP}  "sudo /home/ubuntu/add-secondary_vm.sh"
     touch /local/.net_setup_done
 fi

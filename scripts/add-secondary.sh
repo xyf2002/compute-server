@@ -6,7 +6,7 @@
 # addresses .2-.254 with the same prefix-length as the primary address.
 #
 # Run with sudo.
-set -x
+
 set -euo pipefail
 
 # Pull (iface  primary/CIDR) pairs for vlan* interfaces

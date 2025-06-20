@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+
 # File that contains node and IP mapping information
 ip_conf="nodes.json"
 sudo iptables -F

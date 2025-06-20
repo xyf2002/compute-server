@@ -8,7 +8,10 @@ install_k0s
 
 log "Installing controller service"
 k0s config create > k0s.yaml
+log "configuring controller"
 sudo k0s install controller -c k0s.yaml --enable-worker
+sleep 1
+log "starting k0s"
 sudo k0s start
 
 dest=/home/ubuntu/token-file   # final location

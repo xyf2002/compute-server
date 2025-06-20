@@ -18,7 +18,7 @@
 #   },
 #   ...
 # }
-set -x
+
 set -euo pipefail
 
 nodes=${1:-1}               # how many node blocks to emit

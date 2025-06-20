@@ -3,7 +3,7 @@
 # add-secondary-ips.sh
 # Adds .3-.254/24 to whichever interface already has *.2/24.
 # Run with sudo.
-set -x
+
 set -euo pipefail
 
 # 1. Discover the interface that owns *.2
