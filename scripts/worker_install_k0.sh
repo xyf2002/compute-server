@@ -8,7 +8,27 @@ source /tmp/common_k0.sh
 install_deps
 install_k0s
 
-TOKEN=$(wait_for_token "$CTL_IP") || fail "Could not fetch token"
+remote="ubuntu@192.168.10.2:~/token-file"
+target="$HOME/token-file"         # where we want it locally
+delay=5                           # seconds to wait between tries
+
+# Infinite for-loop: for (;;);
+for (( ; ; )); do
+  [[ -f $target ]] && {            # stop if we already have it
+    echo "✓ $target is present; done."
+    break
+  }
+
+  echo "Attempting to copy token-file..."
+  scp -q -o StrictHostKeyChecking=accept-new "$remote" "$target" && {
+    echo "✓ Copy succeeded."
+    break
+  }
+
+  echo "⚠️  Copy failed or file not yet available; retrying in $delay s..."
+  sleep "$delay"
+done
+
 log "Joining cluster with token"
-sudo k0s install worker --token "$TOKEN" >>"$LOG_FILE"
-sudo systemctl enable --now k0sworker
+sudo k0s install worker --token  $HOME/token-file>>"$LOG_FILE"
+sudo k0s start

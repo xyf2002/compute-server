@@ -266,9 +266,11 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     fi
     step_log "stopping ${VM_NAME} to change ip address"
     sudo virsh shutdown "${VM_NAME}"
+
     for i in {1..200}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+        sudo virsh shutdown "${VM_NAME}"
         [[ "$state" == "shut off" ]] && break
         sleep 1
     done
@@ -352,20 +354,23 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     cd  /local/repository/scripts
     step_log "Adding ips"
     sudo /local/repository/scripts/add-secondary.sh
-        step_log "Generating json"
+    step_log "Generating json"
     sudo /local/repository/scripts/generate_config.sh  $MACHINE_NUM
-        step_log "Adding IP TABLES"
+    step_log "Adding IP TABLES"
     sudo /local/repository/scripts/set_ip.sh
-            step_log "Installing ssh pass"
+    step_log "Installing ssh pass"
     sudo apt-get install sshpass
     password="1997"
-                step_log "Copying ssh keys"
-    sshpass -p "$password" ssh-copy-id ubuntu@${INTERNAL_IP}
+    SSH_OPTS="-oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null"
+    step_log "create ssh keys"
+    ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa
+    step_log "Copying ssh keys"
+    sshpass -p $password ssh-copy-id $SSH_OPTS ubuntu@${INTERNAL_IP}
 
     step_log "Copying script to add ip address"
-    scp /local/repository/scripts/add-secondary_vm.sh ubuntu@${INTERNAL_IP}:~/
+    scp $SSH_OPTS /local/repository/scripts/add-secondary_vm.sh ubuntu@${INTERNAL_IP}:~/
             step_log "calling copied script"
-    ssh -o StrictHostKeyChecking=accept-new       ubuntu@${INTERNAL_IP}       "sudo /home/ubuntu/add-secondary_vm.sh"
+    ssh $SSH_OPTS ubuntu@${INTERNAL_IP}  "sudo /home/ubuntu/add-secondary_vm.sh"
     touch /local/.net_setup_done
 fi
 
@@ -395,31 +400,31 @@ if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "
 
     # 1. Copy the three k0s helper scripts into /tmp inside the guest
     step_log "Copying k0s install files to vm"
-    scp /local/repository/scripts/master_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
-    scp /local/repository/scripts/worker_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
-    scp /local/repository/scripts/common_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp $SSH_OPTS /local/repository/scripts/master_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp $SSH_OPTS /local/repository/scripts/worker_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp $SSH_OPTS /local/repository/scripts/common_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
     # 2. Worker VMs need the ubuntu private key so they can SSH back to the controller VM
     step_log "creating ssh keys"
-    ssh ubuntu@"${INTERNAL_IP}" "mkdir -p /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
-    ssh ubuntu@${INTERNAL_IP} "ssh-keygen -q -t rsa -N '' -f /home/ubuntu/.ssh/id_rsa"
+    ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "mkdir -p /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
+    ssh $SSH_OPTS ubuntu@${INTERNAL_IP} "ssh-keygen -q -t rsa -N '' -f /home/ubuntu/.ssh/id_rsa"
     step_log "checking ssh keys"
-    ssh ubuntu@${INTERNAL_IP} "ls /home/ubuntu/.ssh/id_rsa"
+    ssh $SSH_OPTS ubuntu@${INTERNAL_IP} "ls /home/ubuntu/.ssh/"
 
     # 3. Run the relevant install script inside the guest
     if [ "$INSTANCE_ID" -eq 0 ]; then
         # Controller VM
         ROLE_SCRIPT="/tmp/master_install_k0.sh"
-        ssh ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT"
     else
         # Worker VM
-        ssh ubuntu@${INTERNAL_IP} "sshpass -p 1997 ssh-copy-id ubuntu@192.168.10.2"
-        ROLE_SCRIPT="/tmp/worker_install_k0s.sh"
+        ssh  $SSH_OPTS ubuntu@${INTERNAL_IP} "sshpass -p 1997 ssh-copy-id $SSH_OPTS ubuntu@192.168.10.2"
+        ROLE_SCRIPT="/tmp/worker_install_k0.sh"
         CONTROLLER_VM_IP="192.168.10.2"   # internal IP of the controller VM
-        ssh ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP"
     fi
 
     touch /local/.k0s_in_vm_done
-
+fi
 ################################################################################
 # Step 5: All done
 ################################################################################
