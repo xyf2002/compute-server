@@ -36,7 +36,13 @@ kernel_repo="ujjwalpawar/chronos-kernel"
 tsc_repo="ujjwalpawar/fake_tsc"
 kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
 tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
-
+VM_NAME="ins${INSTANCE_ID}vm"
+INTERNAL_SUBNET=$((10 + INSTANCE_ID)) # 122,123,124,…
+INTERNAL_IP="192.168.${INTERNAL_SUBNET}.2"
+NET_GW_IP="192.168.${INTERNAL_SUBNET}.1"
+RANGE_START="192.168.${INTERNAL_SUBNET}.2"
+RANGE_END="192.168.${INTERNAL_SUBNET}.254"
+EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
 ################################################################################
 # Step 1: Kernel Build
 ################################################################################
@@ -153,14 +159,8 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
          release=bionic arch=amd64
     sudo virsh net-start default
     # 3. Names & deterministic IP/MAC
-    VM_NAME="ins${INSTANCE_ID}vm"
   
-    INTERNAL_SUBNET=$((10 + INSTANCE_ID)) # 122,123,124,…
-    INTERNAL_IP="192.168.${INTERNAL_SUBNET}.2"
-    NET_GW_IP="192.168.${INTERNAL_SUBNET}.1"
-    RANGE_START="192.168.${INTERNAL_SUBNET}.2"
-    RANGE_END="192.168.${INTERNAL_SUBNET}.254"
-    EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
+
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
@@ -355,7 +355,7 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     /local/repository/scripts/generate_config.sh  3
         step_log "Adding IP TABLES"
     /local/repository/scripts/set_ip.sh
-
+fi
 
 
 
