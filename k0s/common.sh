@@ -25,12 +25,6 @@ install_deps() {
       fail "Helm installation failed: helm command not found"
     fi
 
-     # Verify k0s installation
-      if [ -x "$K0S_BIN" ]; then
-        log "k0s version: $($K0S_BIN version)"
-      else
-        fail "k0s installation failed: $K0S_BIN not found or not executable"
-      fi
 }
 
 install_k0s() {
