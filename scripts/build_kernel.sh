@@ -349,21 +349,22 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
         [[ "$state" == "running" ]] && break
         sleep 1
     done
+    cd  /local/repository/scripts
     step_log "Adding ips"
-    /local/repository/scripts/add-secondary.sh
+    sudo /local/repository/scripts/add-secondary.sh
         step_log "Generating json"
-    /local/repository/scripts/generate_config.sh  $MACHINE_NUM
+    sudo /local/repository/scripts/generate_config.sh  $MACHINE_NUM
         step_log "Adding IP TABLES"
-    /local/repository/scripts/set_ip.sh
+    sudo /local/repository/scripts/set_ip.sh
             step_log "Installing ssh pass"
     sudo apt-get install sshpass
     password="1997"
             step_log "Copying script to add ip address"
-    sshpass -p "$password"   scp /local/repository/scripts/add-secondary_vm.sh ubuntu@192.168.10.2:~/
+    sshpass -p "$password"   scp /local/repository/scripts/add-secondary_vm.sh ubuntu@$INTERNAL_IP:~/
             step_log "calling copied script"
-    sshpass -p "$password"   ssh -o StrictHostKeyChecking=accept-new       ubuntu@192.168.10.2       "sudo /home/ubuntu/add-secondary_vm.sh"
-    
+    sshpass -p "$password"   ssh -o StrictHostKeyChecking=accept-new     ubuntu@$INTERNAL_IP  "sudo /home/ubuntu/add-secondary_vm.sh"
 
+    touch /local/.ip_setup_done
 fi
 
 
