@@ -26,6 +26,7 @@ function step_log() {
     echo ""
 }
 
+#Github
 GITHUB_TOKEN="$1"
 GITHUB_USERNAME="$2"
 MACHINE_NUM="$3"
@@ -36,6 +37,10 @@ kernel_repo="ujjwalpawar/chronos-kernel"
 tsc_repo="ujjwalpawar/fake_tsc"
 kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
 tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
+
+
+
+#
 VM_NAME="ins${INSTANCE_ID}vm"
 INTERNAL_SUBNET=$((10 + INSTANCE_ID))
 INTERNAL_IP="192.168.${INTERNAL_SUBNET}.2"
@@ -43,6 +48,15 @@ NET_GW_IP="192.168.${INTERNAL_SUBNET}.1"
 RANGE_START="192.168.${INTERNAL_SUBNET}.2"
 RANGE_END="192.168.${INTERNAL_SUBNET}.254"
 EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
+
+
+# Global Variables for k0s installation
+K0S_LOG="/local/k0s.log"
+K0S_DIR="/local/repository/k0s"
+MASTER_SCRIPT="${K0S_DIR}/master_install_k0s.sh"
+WORKER_SCRIPT="${K0S_DIR}/worker_install_k0s.sh"
+
+
 ################################################################################
 # Step 1: Kernel Build
 ################################################################################
@@ -362,6 +376,7 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     sshpass -p "$password"   scp /local/repository/scripts/add-secondary_vm.sh ubuntu@${INTERNAL_IP}:~/
             step_log "calling copied script"
     sshpass -p "$password"   ssh -o StrictHostKeyChecking=accept-new       ubuntu@${INTERNAL_IP}       "sudo /home/ubuntu/add-secondary_vm.sh"
+    touch /local/.net_setup_done
 
 
 fi
@@ -380,8 +395,25 @@ fi
 #   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
 #   – /local/.k0s_in_vm_done does NOT exist  (k0s has not yet been installed inside the VM)
 ################################################################################
-if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
+if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
     step_log "Installing k0s inside VM ${VM_NAME} (${INTERNAL_IP})" | tee -a "$K0S_LOG"
+
+    # Safety checks
+    if [ ! -d "$K0S_DIR" ]; then
+        echo "❌ ERROR: K0S_DIR '$K0S_DIR' does not exist"; exit 1
+    fi
+
+    if ! compgen -G "$K0S_DIR/*.sh" > /dev/null; then
+        echo "❌ ERROR: No .sh files found in $K0S_DIR"; exit 1
+    fi
+
+    if [ ! -f "$MASTER_SCRIPT" ]; then
+        echo "❌ ERROR: Missing $MASTER_SCRIPT"; exit 1
+    fi
+
+    if [ ! -f "$WORKER_SCRIPT" ]; then
+        echo "❌ ERROR: Missing $WORKER_SCRIPT"; exit 1
+    fi
 
     # Install sshpass if not already installed
     if ! command -v sshpass >/dev/null 2>&1; then
