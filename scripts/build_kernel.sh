@@ -352,7 +352,7 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     step_log "Adding ips"
     /local/repository/scripts/add-secondary.sh
         step_log "Generating json"
-    /local/repository/scripts/generate_config.sh  3
+    /local/repository/scripts/generate_config.sh  $MACHINE_NUM
         step_log "Adding IP TABLES"
     /local/repository/scripts/set_ip.sh
 fi
