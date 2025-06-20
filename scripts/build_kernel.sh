@@ -380,25 +380,25 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
     #StrictHostKeyChecking=accept-new
 
     # 1. Copy the three k0s helper scripts into /tmp inside the guest
-    scp $SSH_OPTS "${K0S_DIR}"/*.sh root@"${INTERNAL_IP}":/tmp/ | tee -a "$K0S_LOG"
+    scp $SSH_OPTS "${K0S_DIR}"/*.sh ubuntu@"${INTERNAL_IP}":/tmp/ | tee -a "$K0S_LOG"
 
-    # 2. Worker VMs need the root private key so they can SSH back to the controller VM
+    # 2. Worker VMs need the ubuntu private key so they can SSH back to the controller VM
     if [ "$INSTANCE_ID" -ne 0 ]; then
-        ssh $SSH_OPTS root@"${INTERNAL_IP}" "mkdir -p /root/.ssh && chmod 700 /root/.ssh"
-        scp $SSH_OPTS /root/.ssh/id_rsa* root@"${INTERNAL_IP}":/root/.ssh/ | tee -a "$K0S_LOG"
-        ssh $SSH_OPTS root@"${INTERNAL_IP}" "chmod 600 /root/.ssh/id_rsa"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "mkdir -p /ubuntu/.ssh && chmod 700 /ubuntu/.ssh"
+        scp $SSH_OPTS /ubuntu/.ssh/id_rsa* ubuntu@"${INTERNAL_IP}":/ubuntu/.ssh/ | tee -a "$K0S_LOG"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "chmod 600 /ubuntu/.ssh/id_rsa"
     fi
 
     # 3. Run the relevant install script inside the guest
     if [ "$INSTANCE_ID" -eq 0 ]; then
         # Controller VM
         ROLE_SCRIPT="/tmp/$(basename "$MASTER_SCRIPT")"
-        ssh $SSH_OPTS root@"${INTERNAL_IP}" "bash $ROLE_SCRIPT" | tee -a "$K0S_LOG"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT" | tee -a "$K0S_LOG"
     else
         # Worker VM
         ROLE_SCRIPT="/tmp/$(basename "$WORKER_SCRIPT")"
         CONTROLLER_VM_IP="192.168.10.2"   # internal IP of the controller VM
-        ssh $SSH_OPTS root@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP" | tee -a "$K0S_LOG"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP" | tee -a "$K0S_LOG"
     fi
 
     touch /local/.k0s_in_vm_done
