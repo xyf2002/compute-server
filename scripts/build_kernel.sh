@@ -27,24 +27,22 @@ function step_log() {
 }
 
 GITHUB_TOKEN="$1"
-GITHUB_USERNAME="$2"
-MACHINE_NUM="$3"
-INSTANCE_ID="$4"
+MACHINE_NUM="$2"
+INSTANCE_ID="$3"
+GITHUB_USERNAME="ujjwalpawar"
 USER_HOME="/users/$(whoami)"
-
-
-#Github repositories
+echo "Number of machines in this experiments are ${MACHINE_NUM}"
 kernel_repo="ujjwalpawar/chronos-kernel"
 tsc_repo="ujjwalpawar/fake_tsc"
 kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
 tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
-
-# --- k0s install -------------------------------------------------------------
-K0S_DIR="/local/repository/k0s"
-MASTER_SCRIPT="${K0S_DIR}/master_install_k0s.sh"
-WORKER_SCRIPT="${K0S_DIR}/worker_install_k0s.sh"
-K0S_LOG="/local/k0s_install.log"
-CONTROLLER_IP="192.168.1.1"     # INSTANCE_ID==0 first node’s exposed IP
+VM_NAME="ins${INSTANCE_ID}vm"
+INTERNAL_SUBNET=$((10 + INSTANCE_ID))
+INTERNAL_IP="192.168.${INTERNAL_SUBNET}.2"
+NET_GW_IP="192.168.${INTERNAL_SUBNET}.1"
+RANGE_START="192.168.${INTERNAL_SUBNET}.2"
+RANGE_END="192.168.${INTERNAL_SUBNET}.254"
+EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
 ################################################################################
 # Step 1: Kernel Build
 ################################################################################
@@ -159,11 +157,10 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo uvt-simplestreams-libvirt sync \
          --source https://cloud-images.ubuntu.com/minimal/daily/ \
          release=bionic arch=amd64
-
+    sudo virsh net-start default
     # 3. Names & deterministic IP/MAC
-    VM_NAME="ins${INSTANCE_ID}vm"
-    INTERNAL_IP="192.168.122.$((4 + INSTANCE_ID))"      # e.g. 4,5,6
-    EXPOSED_IP="192.168.1.$((1 + INSTANCE_ID))"         # e.g. 1,2,3
+
+
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
@@ -239,31 +236,37 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 ################################################################################
 ################################################################################
 
-#    # 5. Shut down VM and patch MAC address
-#    step_log "Shutting VM down to patch MAC"
-#    sudo virsh shutdown "${VM_NAME}"
-#    # 等待关机
-#    for i in {1..20}; do
-#        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
-#        [[ "$state" == "shut off" ]] && break
-#        sleep 1
-#    done
-#    if [[ "$state" != "shut off" ]]; then
-#        echo "❌ VM did not shut off, aborting"; exit 1
-#    fi
-
-    # 7. Ensure default network has host entry
     step_log "Edit the default network"
     NET_XML="/etc/libvirt/qemu/networks/default.xml"
+
     if ! sudo grep -q "$REAL_MAC" "$NET_XML"; then
       step_log "Adding DHCP host entry for ${VM_NAME} in default network"
-      sudo sed -i -E "/<range /a \\\
-      <host mac='$REAL_MAC' name='$VM_NAME' ip='$INTERNAL_IP'/>" "$NET_XML"
-      #Restart DHCP service
+      sudo sed -i -E "
+        # -- bridge / gateway ----------------------------------------------------
+        0,/<ip address=/{
+            s@<ip address='[0-9.]+' netmask='255\.255\.255\.0'>@<ip address='${NET_GW_IP}' netmask='255.255.255.0'>@
+        }
+
+        # -- DHCP range ----------------------------------------------------------
+        /<range /{
+            s@start='[0-9.]+'@start='${RANGE_START}'@
+            s@end='[0-9.]+'@end='${RANGE_END}'@
+        }
+
+        # -- purge any old host entry for this VM --------------------------------
+        /<dhcp>/,/<\/dhcp>/{
+            /<host .*name='${VM_NAME}'.*\/>/d
+        }
+
+        # -- add fresh host reservation -----------------------------------------
+        /<range /a\\
+            <host mac='${REAL_MAC}' name='${VM_NAME}' ip='${INTERNAL_IP}'/>
+        "  "$NET_XML"
 
     fi
     step_log "stopping ${VM_NAME} to change ip address"
-    for i in {1..20}; do
+    sudo virsh shutdown "${VM_NAME}"
+    for i in {1..200}; do
         state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
         echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
         [[ "$state" == "shut off" ]] && break
@@ -277,12 +280,12 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     fi
     step_log "Restarting libvirt default network"
     sudo virsh net-destroy default
-    sleep 10
+
     step_log "Restarting libvirtd service to apply changes"
     sudo service libvirtd restart
-    sleep 10
+
     sudo systemctl restart libvirtd
-    sleep 10
+
     sudo virsh net-start  default
     sleep 10
     # 8. start VM
@@ -290,6 +293,12 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     step_log "Starting ${VM_NAME} again"
     sudo virsh start "${VM_NAME}"
+    for i in {1..200}; do
+        state=$(sudo virsh domstate "${VM_NAME}" 2>/dev/null) || true
+        echo "⏳ Waiting for ${VM_NAME} to shut off... (${i}/20) → state: ${state}"
+        [[ "$state" == "running" ]] && break
+        sleep 1
+    done
     sleep 30
     domif_output2=$(sudo virsh domifaddr "${VM_NAME}" 2>&1)
     step_log "Assigned IP address from domifaddr for ${VM_NAME}" "${domif_output2}"
@@ -297,8 +306,13 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 9. Wait until DHCP assigns the fixed IP
     step_log "Waiting for ${VM_NAME} to get IP ${INTERNAL_IP}"
     for i in {1..30}; do
-        cur_ip=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
-        [[ "${cur_ip}" == "${INTERNAL_IP}" ]] && break
+        ip_list=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
+        for ip in $ip_list; do
+            if [[ "$ip" == "$INTERNAL_IP" ]]; then
+                cur_ip="$ip"
+                break 2  # Exit both loops
+            fi
+        done
         sleep 2
     done
     [[ "${cur_ip}" != "${INTERNAL_IP}" ]] && echo "⚠️  VM IP is ${cur_ip:-N/A}, expected ${INTERNAL_IP}"
@@ -335,58 +349,25 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
         [[ "$state" == "running" ]] && break
         sleep 1
     done
-    # 1. Flush old tables and turn on forwarding
-    sudo iptables -F
-    sudo iptables -t nat -F
-    echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward >/dev/null
+    step_log "Adding ips"
+    /local/repository/scripts/add-secondary.sh
+        step_log "Generating json"
+    /local/repository/scripts/generate_config.sh  $MACHINE_NUM
+        step_log "Adding IP TABLES"
+    /local/repository/scripts/set_ip.sh
+            step_log "Installing ssh pass"
+    sudo apt-get install sshpass
+    password="1997"
+            step_log "Copying script to add ip address"
+    sshpass -p "$password"   scp /local/repository/scripts/add-secondary_vm.sh ubuntu@${INTERNAL_IP}:~/
+            step_log "calling copied script"
+    sshpass -p "$password"   ssh -o StrictHostKeyChecking=accept-new       ubuntu@${INTERNAL_IP}       "sudo /home/ubuntu/add-secondary_vm.sh"
 
-    # 2. Find the primary outbound NIC (first 'dev' after default route)
-    EXPOSE_IFACE=$(ip route get 1 | awk '{for(i=1;i<=NF;i++) if ($i=="dev"){print $(i+1);exit}}')
-    step_log "Outbound interface detected: ${EXPOSE_IFACE}"
 
-    # 3. Parse ip.conf line that matches this host
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    ip_conf="${SCRIPT_DIR}/../config/ip.conf"
-    host=$(hostname)
-    short_host=${host%%.*}
-    line=$(grep "^${short_host}:" "${ip_conf}" || true)
-    if [ -z "$line" ]; then
-        step_log "❌ No entry for '${short_host}' in ${ip_conf}; skipping NAT setup"
-        touch /local/.net_setup_done
-        exit 0
-    fi
-
-    # 4. Iterate each exposed:internal pair for this host
-    echo "$line" | sed -E 's/^[^:]+://g' | tr -d '{}" ' | tr ',' '\n' | while read -r pair; do
-        [ -z "$pair" ] && continue
-        exposed_ip=${pair%%:*}
-        internal_ip=${pair##*:}
-
-        step_log "Alias ${exposed_ip}  →  DNAT to ${internal_ip}"
-        sudo ip addr add "${exposed_ip}/24" dev "${EXPOSE_IFACE}" label "${EXPOSE_IFACE}:exposed" || true
-        sudo iptables -t nat -A PREROUTING  -d "${exposed_ip}"  -j DNAT --to-destination "${internal_ip}"
-        sudo iptables -t nat -A POSTROUTING -s "${internal_ip}" -j MASQUERADE
-    done
-
-    # 5. Show final NAT table for verification
-    step_log "PREROUTING:"
-    sudo iptables -t nat -L PREROUTING  -n
-    step_log "POSTROUTING:"
-    sudo iptables -t nat -L POSTROUTING -n
-
-    touch /local/.net_setup_done
 fi
 
-
-
 ################################################################################
-# Step 5: All done
-################################################################################
-step_log "All steps already completed. Nothing to do."
-
-
-################################################################################
-# Step 6: Install k0s inside the VM
+# Step 5: Install k0s inside the VM
 ################################################################################
 # Preconditions
 #   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
@@ -416,9 +397,14 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
     else
         # Worker VM
         ROLE_SCRIPT="/tmp/$(basename "$WORKER_SCRIPT")"
-        CONTROLLER_VM_IP="192.168.122.4"   # internal IP of the controller VM
+        CONTROLLER_VM_IP="192.168.10.2"   # internal IP of the controller VM
         ssh $SSH_OPTS root@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP" | tee -a "$K0S_LOG"
     fi
 
     touch /local/.k0s_in_vm_done
 fi
+
+################################################################################
+# Step 5: All done
+################################################################################
+step_log "All steps already completed. Nothing to do."
