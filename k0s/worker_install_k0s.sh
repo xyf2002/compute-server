@@ -2,7 +2,7 @@
 # Usage: sudo ./worker_install_k0s.sh <controller_ip>
 set -euo pipefail
 CTL_IP=${1:? "controller IP required"}
-LOG_FILE="/local/k0s_worker.log"
+LOG_FILE="/tmp/k0s_worker.log"
 #source /local/repository/k0s/common.sh
 source /tmp/common.sh
 

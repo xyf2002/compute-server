@@ -2,9 +2,9 @@
 # shellcheck disable=SC1091
 set -euo pipefail
 
-LOG_DIR="/local"
 K0S_VERSION_CHANNEL="stable"
 K0S_BIN="/usr/local/bin/k0s"
+LOG_FILE="/tmp/k0s_master.log"
 
 log()  { echo -e "[\e[34mINFO\e[0m] $*" | tee -a "$LOG_FILE"; }
 fail() { echo -e "[\e[31mFAIL\e[0m] $*" | tee -a "$LOG_FILE"; exit 1; }
@@ -12,10 +12,25 @@ fail() { echo -e "[\e[31mFAIL\e[0m] $*" | tee -a "$LOG_FILE"; exit 1; }
 install_deps() {
   log "Installing prerequisites"
   sudo apt-get update -qq
+
   sudo apt-get install -yqq curl conntrack socat ebtables iptables >>"$LOG_FILE"
 
   log "Installing Helm"
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >>"$LOG_FILE"
+
+   # Verify Helm installation
+    if command -v helm >/dev/null 2>&1; then
+      log "Helm version: $(helm version --short)"
+    else
+      fail "Helm installation failed: helm command not found"
+    fi
+
+     # Verify k0s installation
+      if [ -x "$K0S_BIN" ]; then
+        log "k0s version: $($K0S_BIN version)"
+      else
+        fail "k0s installation failed: $K0S_BIN not found or not executable"
+      fi
 }
 
 install_k0s() {
