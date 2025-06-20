@@ -11,7 +11,7 @@ sudo k0s install controller >>"$LOG_FILE"
 sudo systemctl enable --now k0scontroller
 
 #Generate and save Worker token
-CTL_IP="192.168.1.1"
+CTL_IP="192.168.10.2"
 TOKEN=$(sudo k0s token create --role=worker --api-url "https://${CTL_IP}:6443")
 echo "$TOKEN" | sudo tee /local/worker.token >/dev/null
 log "Worker join-token written to /local/worker.token"

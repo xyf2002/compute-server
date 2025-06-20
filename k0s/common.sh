@@ -13,6 +13,9 @@ install_deps() {
   log "Installing prerequisites"
   sudo apt-get update -qq
   sudo apt-get install -yqq curl conntrack socat ebtables iptables >>"$LOG_FILE"
+
+  log "Installing Helm"
+  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >>"$LOG_FILE"
 }
 
 install_k0s() {
