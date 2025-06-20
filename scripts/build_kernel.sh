@@ -355,6 +355,15 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
     /local/repository/scripts/generate_config.sh  $MACHINE_NUM
         step_log "Adding IP TABLES"
     /local/repository/scripts/set_ip.sh
+            step_log "Installing ssh pass"
+    sudo apt-get install sshpass
+    password="1997"
+            step_log "Copying script to add ip address"
+    sshpass -p "$password"   scp /local/repository/scripts/add-secondary_vm.sh ubuntu@192.168.10.2:~/
+            step_log "calling copied script"
+    sshpass -p "$password"   ssh -o StrictHostKeyChecking=accept-new       ubuntu@192.168.10.2       "sudo /home/ubuntu/add-secondary_vm.sh"
+    
+
 fi
 
 
