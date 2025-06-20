@@ -31,7 +31,7 @@ MACHINE_NUM="$2"
 INSTANCE_ID="$3"
 GITHUB_USERNAME="ujjwalpawar"
 USER_HOME="/users/$(whoami)"
-
+echo "Number of machines in this experiments are ${MACHINE_NUM}"
 kernel_repo="ujjwalpawar/chronos-kernel"
 tsc_repo="ujjwalpawar/fake_tsc"
 kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
