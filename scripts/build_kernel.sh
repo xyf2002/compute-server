@@ -306,8 +306,13 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 9. Wait until DHCP assigns the fixed IP
     step_log "Waiting for ${VM_NAME} to get IP ${INTERNAL_IP}"
     for i in {1..30}; do
-        cur_ip=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
-        [[ "${cur_ip}" == "${INTERNAL_IP}" ]] && break
+        ip_list=$(sudo virsh domifaddr "${VM_NAME}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1)
+        for ip in $ip_list; do
+            if [[ "$ip" == "$INTERNAL_IP" ]]; then
+                cur_ip="$ip"
+                break 2  # Exit both loops
+            fi
+        done
         sleep 2
     done
     [[ "${cur_ip}" != "${INTERNAL_IP}" ]] && echo "⚠️  VM IP is ${cur_ip:-N/A}, expected ${INTERNAL_IP}"
@@ -344,9 +349,12 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
         [[ "$state" == "running" ]] && break
         sleep 1
     done
-    ./add-secondary.sh
-    ./generate_config.sh  $MACHINE_NUM
-    ./set_ip.sh
+    step_log "Adding ips"
+    /local/repository/scripts/add-secondary.sh
+        step_log "Generating json"
+    /local/repository/scripts/generate_config.sh  3
+        step_log "Adding IP TABLES"
+    /local/repository/scripts/set_ip.sh
 
 
 

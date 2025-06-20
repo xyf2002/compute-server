@@ -1,4 +1,4 @@
-  GNU nano 6.2                                             add-secondary-ips.sh                                                       #!/usr/bin/env bash
+#!/usr/bin/env bash
 #
 # add-secondary-ips-vlan.sh
 #
@@ -6,7 +6,7 @@
 # addresses .2-.254 with the same prefix-length as the primary address.
 #
 # Run with sudo.
-
+set -x
 set -euo pipefail
 
 # Pull (iface  primary/CIDR) pairs for vlan* interfaces
