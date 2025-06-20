@@ -32,11 +32,19 @@ MACHINE_NUM="$3"
 INSTANCE_ID="$4"
 USER_HOME="/users/$(whoami)"
 
+
+#Github repositories
 kernel_repo="ujjwalpawar/chronos-kernel"
 tsc_repo="ujjwalpawar/fake_tsc"
 kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
 tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 
+# --- k0s install -------------------------------------------------------------
+K0S_DIR="/local/repository/k0s"
+MASTER_SCRIPT="${K0S_DIR}/master_install_k0s.sh"
+WORKER_SCRIPT="${K0S_DIR}/worker_install_k0s.sh"
+K0S_LOG="/local/k0s_install.log"
+CONTROLLER_IP="192.168.1.1"     # INSTANCE_ID==0 first node’s exposed IP
 ################################################################################
 # Step 1: Kernel Build
 ################################################################################
@@ -375,3 +383,42 @@ fi
 # Step 5: All done
 ################################################################################
 step_log "All steps already completed. Nothing to do."
+
+
+################################################################################
+# Step 6: Install k0s inside the VM
+################################################################################
+# Preconditions
+#   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
+#   – /local/.k0s_in_vm_done does NOT exist  (k0s has not yet been installed inside the VM)
+################################################################################
+if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
+    step_log "Installing k0s inside VM ${VM_NAME} (${INTERNAL_IP})" | tee -a "$K0S_LOG"
+
+    SSH_OPTS="-oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null"
+    #StrictHostKeyChecking=accept-new
+
+    # 1. Copy the three k0s helper scripts into /tmp inside the guest
+    scp $SSH_OPTS "${K0S_DIR}"/*.sh root@"${INTERNAL_IP}":/tmp/ | tee -a "$K0S_LOG"
+
+    # 2. Worker VMs need the root private key so they can SSH back to the controller VM
+    if [ "$INSTANCE_ID" -ne 0 ]; then
+        ssh $SSH_OPTS root@"${INTERNAL_IP}" "mkdir -p /root/.ssh && chmod 700 /root/.ssh"
+        scp $SSH_OPTS /root/.ssh/id_rsa* root@"${INTERNAL_IP}":/root/.ssh/ | tee -a "$K0S_LOG"
+        ssh $SSH_OPTS root@"${INTERNAL_IP}" "chmod 600 /root/.ssh/id_rsa"
+    fi
+
+    # 3. Run the relevant install script inside the guest
+    if [ "$INSTANCE_ID" -eq 0 ]; then
+        # Controller VM
+        ROLE_SCRIPT="/tmp/$(basename "$MASTER_SCRIPT")"
+        ssh $SSH_OPTS root@"${INTERNAL_IP}" "bash $ROLE_SCRIPT" | tee -a "$K0S_LOG"
+    else
+        # Worker VM
+        ROLE_SCRIPT="/tmp/$(basename "$WORKER_SCRIPT")"
+        CONTROLLER_VM_IP="192.168.122.4"   # internal IP of the controller VM
+        ssh $SSH_OPTS root@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP" | tee -a "$K0S_LOG"
+    fi
+
+    touch /local/.k0s_in_vm_done
+fi
