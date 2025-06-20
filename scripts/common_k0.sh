@@ -12,7 +12,7 @@ fail() { echo -e "[\e[31mFAIL\e[0m] $*" | tee -a "$LOG_FILE"; exit 1; }
 install_deps() {
   log "Installing prerequisites"
   sudo apt-get update -qq
-  sudo apt-get install -yqq curl conntrack socat ebtables iptables >>"$LOG_FILE"
+  sudo apt-get install -yqq curl conntrack socat ebtables iptables iputils-ping nano iperf3 >>"$LOG_FILE"
 
   log "Installing Helm"
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >>"$LOG_FILE"

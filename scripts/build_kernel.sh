@@ -359,15 +359,66 @@ if [ -f "/local/.vm_setup_done" ] && [ ! -f "/local/.net_setup_done" ]; then
             step_log "Installing ssh pass"
     sudo apt-get install sshpass
     password="1997"
-            step_log "Copying script to add ip address"
-    sshpass -p "$password"   scp /local/repository/scripts/add-secondary_vm.sh ubuntu@$INTERNAL_IP:~/
-            step_log "calling copied script"
-    sshpass -p "$password"   ssh -o StrictHostKeyChecking=accept-new     ubuntu@$INTERNAL_IP  "sudo /home/ubuntu/add-secondary_vm.sh"
+                step_log "Copying ssh keys"
+    sshpass -p "$password" ssh-copy-id ubuntu@${INTERNAL_IP}
 
-    touch /local/.ip_setup_done
+    step_log "Copying script to add ip address"
+    scp /local/repository/scripts/add-secondary_vm.sh ubuntu@${INTERNAL_IP}:~/
+            step_log "calling copied script"
+    ssh -o StrictHostKeyChecking=accept-new       ubuntu@${INTERNAL_IP}       "sudo /home/ubuntu/add-secondary_vm.sh"
+    touch /local/.net_setup_done
 fi
 
+################################################################################
+# Step 5: Install k0s inside the VM
+################################################################################
+# Preconditions
+#   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
+#   – /local/.k0s_in_vm_done does NOT exist  (k0s has not yet been installed inside the VM)
+################################################################################
+################################################################################
+# Step 5: Install k0s inside the VM
+################################################################################
+# Preconditions
+#   – /local/.vm_setup_done exists   (the VM has been created and given a fixed IP)
+#   – /local/.k0s_in_vm_done does NOT exist  (k0s has not yet been installed inside the VM)
+################################################################################
 
+if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
+    step_log "Installing k0s inside VM ${VM_NAME} (${INTERNAL_IP})" | tee -a "$K0S_LOG"
+
+    # Install sshpass if not already installed
+    if ! command -v sshpass >/dev/null 2>&1; then
+        step_log "Installing sshpass"
+        sudo apt-get install -y sshpass
+    fi
+
+    # 1. Copy the three k0s helper scripts into /tmp inside the guest
+    step_log "Copying k0s install files to vm"
+    scp master_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp worker_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp common_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    # 2. Worker VMs need the ubuntu private key so they can SSH back to the controller VM
+    step_log "creating ssh keys"
+    ssh ubuntu@"${INTERNAL_IP}" "mkdir -p /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
+    ssh ubuntu@${INTERNAL_IP} "ssh-keygen -q -t rsa -N '' -f /home/ubuntu/.ssh/id_rsa"
+    step_log "checking ssh keys"
+    ssh ubuntu@${INTERNAL_IP} "ls /home/ubuntu/.ssh/id_rsa"
+
+    # 3. Run the relevant install script inside the guest
+    if [ "$INSTANCE_ID" -eq 0 ]; then
+        # Controller VM
+        ROLE_SCRIPT="/tmp/master_install_k0.sh"
+        ssh ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT"
+    else
+        # Worker VM
+        ssh ubuntu@${INTERNAL_IP} "sshpass -p 1997 ssh-copy-id ubuntu@192.168.10.2"
+        ROLE_SCRIPT="/tmp/worker_install_k0s.sh"
+        CONTROLLER_VM_IP="192.168.10.2"   # internal IP of the controller VM
+        ssh ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP"
+    fi
+
+    touch /local/.k0s_in_vm_done
 
 ################################################################################
 # Step 5: All done
