@@ -30,5 +30,5 @@ for (( ; ; )); do
 done
 
 log "Joining cluster with token"
-sudo k0s install worker --token  $HOME/token-file>>"$LOG_FILE"
+sudo k0s install worker --token-file  /home/ubuntu/token-file>>"$LOG_FILE"
 sudo k0s start
