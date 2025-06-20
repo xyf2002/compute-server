@@ -9,7 +9,7 @@ install_deps
 install_k0s
 
 remote="ubuntu@192.168.10.2:~/token-file"
-target="$HOME/token-file"         # where we want it locally
+target="/home/ubuntu/token-file"         # where we want it locally
 delay=5                           # seconds to wait between tries
 
 # Infinite for-loop: for (;;);
