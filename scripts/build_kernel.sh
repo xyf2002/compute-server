@@ -385,7 +385,7 @@ fi
 ################################################################################
 
 if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "/local/.k0s_in_vm_done" ]; then
-    step_log "Installing k0s inside VM ${VM_NAME} (${INTERNAL_IP})" | tee -a "$K0S_LOG"
+    step_log "Installing k0s inside VM ${VM_NAME} (${INTERNAL_IP})"
 
     # Install sshpass if not already installed
     if ! command -v sshpass >/dev/null 2>&1; then
@@ -395,9 +395,9 @@ if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "
 
     # 1. Copy the three k0s helper scripts into /tmp inside the guest
     step_log "Copying k0s install files to vm"
-    scp master_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
-    scp worker_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
-    scp common_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp /local/repository/scripts/master_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp /local/repository/scripts/worker_install_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
+    scp /local/repository/scripts/common_k0.sh ubuntu@"${INTERNAL_IP}":/tmp/ 
     # 2. Worker VMs need the ubuntu private key so they can SSH back to the controller VM
     step_log "creating ssh keys"
     ssh ubuntu@"${INTERNAL_IP}" "mkdir -p /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
