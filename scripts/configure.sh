@@ -56,7 +56,7 @@ done
 echo "Done!"
 date
 touch /local/.rebooted
-
+sudo chmod u+x /local/repository/scripts/build_proxy.sh
 if [ ! -f "/local/.noreboot" ]; then
     echo "Rebooting..."
     echo ""

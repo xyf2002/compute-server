@@ -252,7 +252,18 @@ for i in range(0,params.machineNum):
     iface = node.addInterface()
     iface.addAddress(PG.IPv4Address("192.168."+str(i+1+k8s_ip)+".1", netmask))
     network.addInterface(iface)
-    
+
+count += 1  
+node = rspec.RawPC("Proxy")
+node.disk_image = os
+node.addService(PG.Execute(shell="bash", command=profileConfigs + "/local/repository/scripts/configure.sh"))
+command="/local/repository/scripts/build_proxy.sh"
+node.addService(PG.Execute(shell="bash", command=command))
+node.hardware_type = params.Hardware
+iface = node.addInterface()
+iface.addAddress(PG.IPv4Address("192.168.250.1", netmask))
+network.addInterface(iface)
+
 for idx, dense_radio in enumerate(params.dense_radios):
     node = rspec.RawPC("dense-{}".format(dense_radio.device.split("-")[-1]))
     node.disk_image = os
