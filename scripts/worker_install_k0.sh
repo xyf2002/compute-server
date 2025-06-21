@@ -20,7 +20,7 @@ for (( ; ; )); do
   }
 
   echo "Attempting to copy token-file..."
-  scp -q -o StrictHostKeyChecking=accept-new "$remote" "$target" && {
+  scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$remote" "$target" && {
     echo "✓ Copy succeeded."
     break
   }
