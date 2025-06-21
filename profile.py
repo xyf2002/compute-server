@@ -27,6 +27,8 @@ pc.defineParameter("machineNum", "Number of Machines",
                    portal.ParameterType.INTEGER, 1)
 pc.defineParameter("Hardware", "Machine Hardware",
                    portal.ParameterType.NODETYPE,"pc")
+pc.defineParameter("ProxyHardware", "Proxy Machine Hardware",
+                   portal.ParameterType.NODETYPE,"pc")
 pc.defineParameter("OS", "Operating System",
                    portal.ParameterType.STRING,"ubuntu18",[("ubuntu18","ubuntu18"),("ubuntu20","ubuntu20"), ("ubuntu22", "ubuntu22")])
 
@@ -248,7 +250,7 @@ for i in range(0,params.machineNum):
     # command="/local/repository/scripts/build_kernel.sh {}".format(params.token)
     command="/local/repository/scripts/build_kernel.sh {} {} {}".format(params.token, params.machineNum, i)
     node.addService(PG.Execute(shell="bash", command=command))
-    node.hardware_type = params.Hardware
+    node.hardware_type = "c6620"
     iface = node.addInterface()
     iface.addAddress(PG.IPv4Address("192.168."+str(i+1+k8s_ip)+".1", netmask))
     network.addInterface(iface)
@@ -259,7 +261,7 @@ node.disk_image = os
 node.addService(PG.Execute(shell="bash", command=profileConfigs + "/local/repository/scripts/configure.sh"))
 command="/local/repository/scripts/build_proxy.sh"
 node.addService(PG.Execute(shell="bash", command=command))
-node.hardware_type = params.Hardware
+node.hardware_type = params.ProxyHardware
 iface = node.addInterface()
 iface.addAddress(PG.IPv4Address("192.168.250.1", netmask))
 network.addInterface(iface)
