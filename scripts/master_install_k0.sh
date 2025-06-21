@@ -32,4 +32,4 @@ while :; do
 done
 
 #Generate and save Worker token
-log "Worker join-token written to /home/ubuntu/token-file
+log "Worker join-token written to /home/ubuntu/token-file"
