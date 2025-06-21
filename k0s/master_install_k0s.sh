@@ -34,7 +34,7 @@ fi
 log "Generating join token for worker..."
 CTL_IP="192.168.10.2"
 TOKEN=$(sudo k0s token create --role=worker)
-echo "$TOKEN" | sudo tee /local/worker.token >/dev/null
+echo "$TOKEN" | sudo tee /tmp/worker.token >/dev/null
 
 log "✅ Worker join-token written to /local/worker.token"
 log "🔑 Token preview: ${TOKEN:0:16}..."
