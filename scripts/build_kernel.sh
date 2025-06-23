@@ -127,12 +127,12 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
     sudo modprobe kvm
     sudo modprobe kvm_intel
     sudo ./init
-
+    sudo ./init
     step_log "Re-loading KVM modules"
 
     step_log "fake_tsc module inserted"
-    lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
-    dmesg | tail -n 20
+    sudo lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
+    sudo dmesg | tail -n 20
 
     touch /local/.tsc_done
 fi
