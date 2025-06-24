@@ -8,6 +8,7 @@ install_k0s
 
 log "Installing controller service"
 k0s config create > k0s.yaml
+sed -i 's/^    provider: kuberouter$/    provider: custom/' k0s.yaml
 log "configuring controller"
 sudo k0s install controller -c k0s.yaml --enable-worker
 sleep 1
@@ -30,6 +31,6 @@ while :; do
     sleep "$delay"
   fi
 done
-
+sudo k0s kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
 #Generate and save Worker token
 log "Worker join-token written to /home/ubuntu/token-file"
