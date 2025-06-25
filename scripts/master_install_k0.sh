@@ -36,6 +36,9 @@ sudo cp /var/lib/k0s/pki/admin.conf ~/admin.conf
 echo 'export KUBECONFIG=~/admin.conf' >> ~/.bashrc
 sudo chown ubuntu ~/admin.conf
 chmod g-r ~/admin.conf
+sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq
+echo -e '#!/bin/bash\nexec k0s kubectl "$@"' | sudo tee /usr/local/bin/kubectl > /dev/null
+sudo chmod +x /usr/local/bin/kubectl
 
 #Generate and save Worker token
 log "Worker join-token written to /home/ubuntu/token-file"
