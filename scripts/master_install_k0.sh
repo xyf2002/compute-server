@@ -32,5 +32,10 @@ while :; do
   fi
 done
 sudo k0s kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+sudo cp /var/lib/k0s/pki/admin.conf ~/admin.conf
+echo 'export KUBECONFIG=~/admin.conf' >> ~/.bashrc
+sudo chown ubuntu ~/admin.conf
+chmod g-r ~/admin.conf
+
 #Generate and save Worker token
 log "Worker join-token written to /home/ubuntu/token-file"
