@@ -13,7 +13,8 @@ install_deps() {
   log "Installing prerequisites"
   sudo apt-get update -qq
   sudo apt-get install -yqq curl conntrack socat ebtables iptables iputils-ping nano iperf3 >>"$LOG_FILE"
-
+  sudo apt-get install -yqq libsctp-dev lksctp-tools  zlib1g-dev
+  sudo modprobe sctp
   log "Installing Helm"
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >>"$LOG_FILE"
 }

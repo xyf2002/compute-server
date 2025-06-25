@@ -129,7 +129,8 @@ if [ -f "/local/.kernel_done" ] && [ -f "/local/.rebooted" ] && [ ! -f "/local/.
     sudo ./init
     sudo ./init
     step_log "Re-loading KVM modules"
-
+    sudo apt-get install -yqq libsctp-dev lksctp-tools  zlib1g-dev
+    sudo modprobe sctp
     step_log "fake_tsc module inserted"
     sudo lsmod | grep custom_tsc || echo "⚠️ Warning: custom_tsc not in lsmod"
     sudo dmesg | tail -n 20
