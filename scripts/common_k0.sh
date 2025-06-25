@@ -21,6 +21,11 @@ install_deps() {
 install_k0s() {
   log "Installing k0s ($K0S_VERSION_CHANNEL)"
   curl -sSLf https://get.k0s.sh | sudo bash -s -- "$K0S_VERSION_CHANNEL" >>"$LOG_FILE"
+    # Download and install the standard CNI plugins
+  sudo mkdir -p /opt/cni/bin
+  curl -L https://github.com/containernetworking/plugins/releases/download/v1.4.0/cni-plugins-linux-amd64-v1.4.0.tgz \
+    | sudo tar -xz -C /opt/cni/bin
+
 }
 
 wait_for_token() {         # $1 = controller_ip
