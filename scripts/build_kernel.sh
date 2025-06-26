@@ -428,6 +428,11 @@ if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "
         CONTROLLER_VM_IP="192.168.10.2"   # internal IP of the controller VM
         ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP"
     fi
+    sudo gcc -pthread slotcheckerservice.c -o slotcheckerservice
+    sudo cp /local/repository/scripts/lotcheckerservice.service /etc/systemd/system/slotcheckerservice.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable slotcheckerservice
+    sudo systemctl start slotcheckerservice
 
     touch /local/.k0s_in_vm_done
 fi
