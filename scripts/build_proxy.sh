@@ -28,6 +28,6 @@ kernel_repo="andrewferguson/phobos-proxy"
   sudo apt-get install -yqq libsctp-dev lksctp-tools  zlib1g-dev
   sudo modprobe sctp
 phobos_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
-git clone --quiet "${kernel_link}"
-cd phobos-proxy
+git clone --quiet "${phobos_link}" ~/phobos-proxy
+cd ~/phobos-proxy
 make -j
