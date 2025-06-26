@@ -413,7 +413,7 @@ if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "
     ssh $SSH_OPTS ubuntu@${INTERNAL_IP} "ssh-keygen -q -t rsa -N '' -f /home/ubuntu/.ssh/id_rsa"
     step_log "checking ssh keys"
     ssh $SSH_OPTS ubuntu@${INTERNAL_IP} "ls /home/ubuntu/.ssh/"
-
+    
     # 3. Run the relevant install script inside the guest
     if [ "$INSTANCE_ID" -eq 0 ]; then
         # Controller VM
