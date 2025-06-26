@@ -429,7 +429,7 @@ if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "
         ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT $CONTROLLER_VM_IP"
     fi
     sudo gcc -pthread slotcheckerservice.c -o slotcheckerservice
-    sudo cp /local/repository/scripts/lotcheckerservice.service /etc/systemd/system/slotcheckerservice.service
+    sudo cp /local/repository/scripts/slotcheckerservice.service /etc/systemd/system/slotcheckerservice.service
     sudo systemctl daemon-reload
     sudo systemctl enable slotcheckerservice
     sudo systemctl start slotcheckerservice
