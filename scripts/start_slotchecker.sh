@@ -4,4 +4,4 @@
 C_ID=$(hostname | grep -o '[0-9]\+')
 
 # Run the main binary with extracted c_id
-/local/repository/scripts/slotcheckerservice "$C_ID"
+sudo taskset -c 2 chrt -f 99 /local/repository/scripts/slotcheckerservice "$C_ID"

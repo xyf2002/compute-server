@@ -34,7 +34,7 @@ typedef struct {
     int mapped;
 } Host;
 
-uint8_t slot = 0;
+int16_t slot = 2;
 
 // Function to create a new host mapper
 Host* NewHost(const char *shmPath) {
@@ -196,16 +196,22 @@ int bind_for_switch(int port){
 
 long long int accept_from_switch(int client_fd){
     int n;
-    uint16_t num;
-    uint8_t received_num; 
+    uint8_t num;
+    uint8_t received_num;
     if (recvfrom(client_fd,&received_num, sizeof(received_num), MSG_WAITALL, NULL, NULL) == -1) {
     perror("recvfrom failed");
     return 1;
     }
+
     slot = received_num;
-     // extract the ack from the message
-  //  printf("Received %d from switch \n", received_num);
-    //printf("Received %d from switch \n", received_ack);
+    if(received_num == 0){
+      printf("exit received from switch \n", received_num);
+      return -1;
+    }
+
+
+
+    printf("Received %d from switch \n", received_num);
     return received_num ;
 }
 
@@ -271,7 +277,7 @@ void receive_data(int sockfd) {
     }
 
     buffer[n] = '\0'; // Null-terminate the received string
-    printf("Message received: %s\n", buffer);
+    //printf("Message received: %s\n", buffer);
 }
 
 
@@ -289,7 +295,7 @@ void handle_sigint(int sig) {
 }
 
 int main(){
-   
+
     const char *shmPath = "/dev/shm/my-little-shared-memory";
     Host *host = NewHost(shmPath);
 
@@ -302,7 +308,7 @@ int main(){
         return 1;
     }
 
-    char mbuffer[256]; 
+    char mbuffer[256];
 
     int server_fd, new_socket, valread;
     struct sockaddr_in address;
@@ -332,26 +338,39 @@ int main(){
 
     // Set up the SIGINT signal handler
     sigaction(SIGINT, &sa, NULL);
-    
-    WriteToSharedMem(host,"S"); 
+    accept_from_switch(from_switch_fd);
+    printf("Switch connected \n");
+    sleep(1);
+    WriteToSharedMem(host,"S");
     if (Sync(host) != 0) {
         fprintf(stderr, "Failed to sync memory\n");
         }
     while (keep_running) {
         ReadFromSharedMem(host, mbuffer, sizeof(mbuffer));
-//        printf("Read from shared memory: %c\n", mbuffer[0]);
+      //  printf("Read from shared memory: %c\n", mbuffer[0]);
         if(mbuffer[0]=='F'){
-//            printf("Slot finished \n");
-  //          printf("Sending info to switch\n");
-            send_to_switch(switch_fd, 1, servaddr);
+//           printf("Slot finished \n");
+  //         printf("Sending info to switch\n");
+            send_to_switch(switch_fd, 0, servaddr);
     //        printf("Waiting for switch to complete\n");
-            accept_from_switch(from_switch_fd);
-      //      printf("Switch completed\n");
-        //    printf("Unfreeze the time\n");
-            WriteToSharedMem(host,"S");  
+            int res = accept_from_switch(from_switch_fd);
+        //    printf("Switch completed\n");
+          //  printf("Unfreeze the time\n");
+            WriteToSharedMem(host,"S");
             if (Sync(host) != 0) {
             fprintf(stderr, "Failed to sync memory\n");
             }
+            if(res == -1){
+            WriteToSharedMem(host,"I");
+
+            res=accept_from_switch(from_switch_fd);
+            while(res!=1){
+               sleep(1);
+               res=accept_from_switch(from_switch_fd);
+               }
+           WriteToSharedMem(host,"S");
+           printf("Switch connected \n");
+           }
             }
         else{
             usleep(1);
@@ -360,7 +379,7 @@ int main(){
     printf("Exiting\n");
     close(new_socket);
     close(server_fd);
-    WriteToSharedMem(host,"I");    
+    WriteToSharedMem(host,"I");
     if (Unmap(host) != 0) {
         fprintf(stderr, "Failed to unmap memory\n");
     }
@@ -370,7 +389,3 @@ int main(){
 
     return 0;
 }
-
-
-
-
