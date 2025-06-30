@@ -294,8 +294,8 @@ void handle_sigint(int sig) {
     keep_running = 0;
 }
 
-int main(){
-
+int main(int argc, char *argv[]){
+    int  c_id = atoi(argv[1]);
     const char *shmPath = "/dev/shm/my-little-shared-memory";
     Host *host = NewHost(shmPath);
 
@@ -351,7 +351,7 @@ int main(){
         if(mbuffer[0]=='F'){
 //           printf("Slot finished \n");
   //         printf("Sending info to switch\n");
-            send_to_switch(switch_fd, 0, servaddr);
+            send_to_switch(switch_fd, c_id, servaddr);
     //        printf("Waiting for switch to complete\n");
             int res = accept_from_switch(from_switch_fd);
         //    printf("Switch completed\n");
