@@ -27,9 +27,9 @@ function step_log() {
 }
 
 GITHUB_TOKEN="$1"
-MACHINE_NUM="$2"
-INSTANCE_ID="$3"
-GITHUB_USERNAME="ujjwalpawar"
+GITHUB_USERNAME="$2"
+MACHINE_NUM="$3"
+INSTANCE_ID="$4"
 USER_HOME="/users/$(whoami)"
 echo "Number of machines in this experiments are ${MACHINE_NUM}"
 kernel_repo="ujjwalpawar/chronos-kernel"
@@ -81,6 +81,33 @@ if [ ! -f "/local/.kernel_done" ]; then
 
     step_log "Updating grub"
     sudo update-grub
+
+
+    ################################################################################
+    # Step 1.5: Configure tuned for core isolation (core 2–55)
+    ################################################################################
+    step_log "Installing tuned and configuring for CPU isolation (core 2–55)"
+    sudo apt-get install -y tuned
+
+    sudo ln -sf /boot/grub/grub.cfg /etc/grub2.cfg
+
+    export line to grub.d/00_tuned
+    echo 'echo "export tuned_params"' | sudo tee -a /etc/grub.d/00_tuned
+
+    echo "isolated_cores=2-55" | sudo tee /etc/tuned/realtime-variables.conf
+
+    sudo sed -i '/^cmdline_realtime=/d' /usr/lib/tuned/realtime/tuned.conf
+
+    # If [bootloader] section does not exist, append it
+    if ! grep -q "^\[bootloader\]" /usr/lib/tuned/realtime/tuned.conf; then
+        echo -e "\n[bootloader]" | sudo tee -a /usr/lib/tuned/realtime/tuned.conf
+    fi
+
+    # Append the new cmdline_realtime under [bootloader]
+    sudo sed -i '/^\[bootloader\]/a cmdline_realtime=+isolcpus=${managed_irq}${isolated_cores} nohz_full=${isolated_cores} rcu_nocbs=${isolated_cores} nosoftlockup' /usr/lib/tuned/realtime/tuned.conf
+
+    # Activate realtime profile
+    sudo tuned-adm profile realtime
 
     step_log "Mark kernel done and reboot"
     touch /local/.kernel_done
