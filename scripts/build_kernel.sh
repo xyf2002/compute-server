@@ -168,7 +168,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 4. Create VM (uvt-kvm, DHCP 模式即可)
     if ! sudo uvt-kvm create "${VM_NAME}" \
             release=focal arch=amd64 \
-            --cpu 54 --memory 54096 --password 1997 --disk 40; then
+            --cpu 54 --memory 54096 --password 1997 --disk 30; then
         echo "❌ uvt-kvm create failed, aborting"; exit 1
     fi
 
