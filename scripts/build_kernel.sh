@@ -189,7 +189,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
   
 
     step_log "Changing default storage location"
-    bash change_storage.sh
+    sudo /local/repository/scripts/change_storage.sh
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
