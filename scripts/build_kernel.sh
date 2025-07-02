@@ -188,6 +188,8 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 3. Names & deterministic IP/MAC
   
 
+    step_log "Changing default storage location"
+    bash change_storage.sh
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
@@ -195,7 +197,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 4. Create VM (uvt-kvm, DHCP 模式即可)
     if ! sudo uvt-kvm create "${VM_NAME}" \
             release=focal arch=amd64 \
-            --cpu 54 --memory 54096 --password 1997 --disk 30; then
+            --cpu 54 --memory 54096 --password 1997 --disk 200; then
         echo "❌ uvt-kvm create failed, aborting"; exit 1
     fi
 
