@@ -40,6 +40,10 @@ sudo virsh pool-build    "$POOL_NAME"
 sudo virsh pool-start    "$POOL_NAME"
 sudo virsh pool-autostart "$POOL_NAME"
 
+echo "Ensure the new path has the correct ownership and permissions"
+sudo chown -R libvirt-qemu:kvm "${NEW_PATH}"
+sudo chmod -R 755 "${NEW_PATH}"
+
 echo "✅ Pool \"$POOL_NAME\" now points to $NEW_PATH"
 echo "👉 Remember to move any existing volume files into the new directory if needed:"
 echo "   # rsync -a /var/lib/uvtool/libvirt/images/ ${NEW_PATH}/"
