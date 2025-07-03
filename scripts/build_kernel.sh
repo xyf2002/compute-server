@@ -180,7 +180,9 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo apt-get update
     sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients \
                             bridge-utils virtinst uvtool
-
+    
+    step_log "Changing default storage location"
+    sudo /local/repository/scripts/change_storage.sh
     # 2. Sync cloud image (once per host)
     step_log "Syncing Ubuntu cloud image"
     sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/daily/ release=focal arch=amd64
@@ -188,8 +190,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     # 3. Names & deterministic IP/MAC
   
 
-    step_log "Changing default storage location"
-    sudo /local/repository/scripts/change_storage.sh
+
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
