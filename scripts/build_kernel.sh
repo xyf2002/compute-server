@@ -188,9 +188,19 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/daily/ release=focal arch=amd64
     sudo virsh net-start default
     # 3. Names & deterministic IP/MAC
-  
+    sudo virsh pool-destroy  uvtool 
+    sudo virsh pool-edit     uvtool  
 
+    sudo virsh pool-build   uvtool
+    sudo virsh pool-start   uvtool
+    sudo virsh pool-autostart uvtool
+    sudo chown -R libvirt-qemu:kvm /storage/uvtool      # in case anything already exists
+    sudo chmod 2770               /storage/uvtool       # setgid bit → new files get group=kvm
 
+    sudo setfacl -d -m g:kvm:rwx  /storage/uvtool
+    
+    echo "/storage/uvtool/** rwk," | sudo tee /etc/apparmor.d/local/abstractions/libvirt-qemu
+    sudo systemctl reload apparmor
 
     step_log "VM  = ${VM_NAME}"
     step_log "Int = ${INTERNAL_IP}"
