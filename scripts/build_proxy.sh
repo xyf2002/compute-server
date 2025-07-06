@@ -38,3 +38,7 @@ for (( i=0; i<NUM_MACHINE; i++ )); do
   sudo ip route add 192.168."${DEST_NET}".2 via 192.168."${GW_NET}".1
 done
 make -j
+sudo cp /local/repository/scripts/generate_conf.sh ~/
+cd ~/
+chmod +x generate_conf.sh
+

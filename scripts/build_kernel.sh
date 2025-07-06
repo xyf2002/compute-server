@@ -33,8 +33,10 @@ INSTANCE_ID="$4"
 USER_HOME="/users/$(whoami)"
 echo "Number of machines in this experiments are ${MACHINE_NUM}"
 kernel_repo="ujjwalpawar/chronos-kernel"
+qdt="netsys-edinburgh/quick_deployment_tools"
 tsc_repo="ujjwalpawar/fake_tsc"
 kernel_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
+qdt_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${kernel_repo}.git"
 tsc_link="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${tsc_repo}.git"
 VM_NAME="ins${INSTANCE_ID}vm"
 INTERNAL_SUBNET=$((10 + INSTANCE_ID)) # 122,123,124,…
@@ -459,6 +461,7 @@ if [ -f "/local/.vm_setup_done" ] && [ -f "/local/.net_setup_done" ] && [ ! -f "
         # Controller VM
         ROLE_SCRIPT="/tmp/master_install_k0.sh"
         ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" "bash $ROLE_SCRIPT"
+        ssh $SSH_OPTS ubuntu@"${INTERNAL_IP}" git clone --quiet "${qdt_link}"
     else
         # Worker VM
         ssh  $SSH_OPTS ubuntu@${INTERNAL_IP} "sudo apt -y update && sudo apt -y install sshpass"
