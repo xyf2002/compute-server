@@ -40,5 +40,5 @@ done
 make -j
 sudo cp /local/repository/scripts/generate_conf.sh ~/
 cd ~/
-chmod +x generate_conf.sh
+sudo chmod +x generate_conf.sh
 
