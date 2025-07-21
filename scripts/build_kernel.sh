@@ -187,7 +187,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
     sudo /local/repository/scripts/change_storage.sh
     # 2. Sync cloud image (once per host)
     step_log "Syncing Ubuntu cloud image"
-    sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/daily/ release=jammy arch=amd64
+    sudo uvt-simplestreams-libvirt sync --source https://cloud-images.ubuntu.com/daily/ release=focal arch=amd64
     sudo virsh net-start default
     # 3. Names & deterministic IP/MAC
     sudo virsh pool-destroy  uvtool 
@@ -209,7 +209,7 @@ if [ -f "/local/.tsc_done" ] && [ ! -f "/local/.vm_setup_done" ]; then
 
     # 4. Create VM (uvt-kvm, DHCP 模式即可)
     if ! sudo uvt-kvm create "${VM_NAME}" \
-            release=jammy arch=amd64 \
+            release=focal arch=amd64 \
             --cpu 54 --memory 54096 --password 1997 --disk 200; then
         echo "❌ uvt-kvm create failed, aborting"; exit 1
     fi
